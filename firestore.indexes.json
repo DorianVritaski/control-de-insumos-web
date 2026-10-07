@@ -1,0 +1,14 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "registros_entrega",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "fecha_registro", "order": "ASCENDING" },
+        { "fieldPath": "insumo", "order": "ASCENDING" },
+        { "fieldPath": "pabellon", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" }
+      ]
+    }
+  ]
+}

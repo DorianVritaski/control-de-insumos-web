@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control de Insumos Web (PAB-IN)</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS -->
+  <!-- <script src="https://cdn.sheetjs.com/xlsx-0.18.5/package/dist/xlsx.full.min.js"></script> -->
+  <!-- Estilos personalizados -->
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body class="bg-gray-100 font-sans">
+
+  <!-- Contenedor de la SPA -->
+  <div id="app" class="min-h-screen">
+    <!-- El enrutador y las vistas se cargarán dinámicamente aquí -->
+  </div>
+
+  <!-- Scripts de la aplicación -->
+  <script type="module">
+    // Importar el enrutador principal
+    import { initApp } from "./js/app.js";
+
+    // Inicializar la aplicación
+    document.addEventListener("DOMContentLoaded", () => {
+      initApp();
+    });
+  </script>
+</body>
+</html>

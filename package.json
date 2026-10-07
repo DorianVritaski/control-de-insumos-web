@@ -1,0 +1,15 @@
+{
+  "name": "control-de-insumos-web",
+  "version": "1.0.0",
+  "description": "Sistema web para el registro de distribución de insumos (Papel Higiénico y Jabón) por pabellones, pisos y baños en la universidad.",
+  "type": "module",
+  "license": "MIT",
+  "dependencies": {
+    "firebase": "^10.8.0",
+    "xlsx": "^0.18.5",
+    "sheetjs": "^0.18.5"
+  },
+  "devDependencies": {
+    "firebase-tools": "^13.0.0"
+  }
+}
