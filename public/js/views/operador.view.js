@@ -70,9 +70,9 @@ export function operadorView() {
             <p class="text-muted">Fecha: <span id="fecha-actual"></span></p>
             <hr>
             <ul class="list-group list-group-flush">
-              <li class="list-group-item"><span class="badge badge-secondary">Operador</span><span id="operador-role"></span></li>
-              <li class="list-group-item"><span class="badge badge-info">Entregas del día:</span><span id="entregas-contador">0</span></li>
-              <li class="list-group-item"><span class="badge badge-warning">Estado:</span><span id="operador-estado">Activo</span></li>
+              <li class="list-group-item"><span class="badge badge-secondary">Rol: </span><span id="operador-role"></span></li>
+              <li class="list-group-item"><span class="badge badge-info">Entregas del día: </span><span id="entregas-contador">0</span></li>
+              <li class="list-group-item"><span class="badge badge-warning">Estado: </span><span id="operador-estado">Activo</span></li>
             </ul>
           </div>
         </div>
@@ -140,11 +140,11 @@ export function operadorView() {
           container.querySelector("#operador-estado").textContent = user.activo ? "Activo" : "Inactivo";
 
           const fecha = new Date();
-          const dias = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
-          const meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+          const dias = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+          const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
           const fechaStr = `${dias[fecha.getDay()]}, ${fecha.getDate()} de ${meses[fecha.getMonth()]} del ${fecha.getFullYear()}`;
           container.querySelector("#fecha-actual").textContent = fechaStr;
-          
+
           const entregas = await obtenerEntregasDelDia(user.uid);
           container.querySelector("#entregas-contador").textContent = entregas.length;
         } catch (e) {
@@ -189,7 +189,7 @@ export function operadorView() {
         alertContainer.innerHTML = `<div class="alert alert-success">✅ Entrega registrada exitosamente (ID: ${result.id}).</div>`;
         container.querySelector("#registro-form").reset();
         actualizarCantidadTotal();
-        
+
         // Refrescar el contador de entregas
         if (isAuthenticated()) {
           const user = await getCurrentUser();
