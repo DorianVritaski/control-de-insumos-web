@@ -2,7 +2,9 @@
 // CRUD de operadores y administradores
 // Según la especificación Spec_Driven_Development.md - Sección 5.1, RF-06
 
-import { db } from "../firebase-config.js";
+import { db, firebaseConfig } from "../firebase-config.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import {
   collection,
   getDocs,
@@ -10,9 +12,11 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  setDoc,
   query,
   where,
-  orderBy
+  orderBy,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const USERS_COLLECTION = "users";
@@ -39,8 +43,23 @@ export async function registrarUsuario(correo, dni, nombreCompleto, rol, activo 
       throw new Error(`El correo "${correo}" ya está registrado.`);
     }
 
+    let authUid = uid;
+    
+    // Si no se provee un uid, crear el usuario en Firebase Auth
+    if (!authUid) {
+      // Usamos una app secundaria para no desloguear al administrador
+      const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp" + Date.now());
+      const secondaryAuth = getAuth(secondaryApp);
+      
+      const password = dni; // La contraseña por defecto es el DNI
+      const userCred = await createUserWithEmailAndPassword(secondaryAuth, correo, password);
+      authUid = userCred.user.uid;
+      
+      await signOut(secondaryAuth);
+    }
+
     const usuarioData = {
-      uid: uid || "pending", // UID será asignado por Firebase Auth
+      uid: authUid,
       correo,
       dni,
       nombre_completo: nombreCompleto,
@@ -49,10 +68,12 @@ export async function registrarUsuario(correo, dni, nombreCompleto, rol, activo 
       created_at: serverTimestamp()
     };
 
-    const docRef = await addDoc(usuariosRef, usuarioData);
+    // Usar setDoc para que el ID del documento coincida con el UID de Auth
+    const docRef = doc(db, USERS_COLLECTION, authUid);
+    await setDoc(docRef, usuarioData);
 
     return {
-      id: docRef.id,
+      id: authUid,
       ...usuarioData
     };
   } catch (error) {

@@ -10,7 +10,11 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import {
   doc,
-  getDoc
+  getDoc,
+  collection,
+  query,
+  where,
+  getDocs
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 /**
@@ -28,13 +32,21 @@ export async function login(email, password) {
     // Consultar el documento del usuario en Firestore para verificar el rol
     const userRef = doc(db, "users", uid);
     const userSnap = await getDoc(userRef);
+    let userData = null;
 
-    if (!userSnap.exists()) {
-      await signOut(auth);
-      throw new Error("Usuario no encontrado en Firestore.");
+    if (userSnap.exists()) {
+      userData = userSnap.data();
+    } else {
+      // Fallback: Buscar por correo (para cuentas creadas antes del fix)
+      const q = query(collection(db, "users"), where("correo", "==", email));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        userData = qSnap.docs[0].data();
+      } else {
+        await signOut(auth);
+        throw new Error("Usuario no encontrado en Firestore.");
+      }
     }
-
-    const userData = userSnap.data();
     const isAdmin = userData.rol === "ADMIN";
     const isOperator = userData.rol === "OPERADOR";
 
@@ -97,11 +109,20 @@ export async function getCurrentUser() {
   if (!isAuthenticated()) return null;
 
   const uid = auth.currentUser.uid;
+  const email = auth.currentUser.email;
   const userRef = doc(db, "users", uid);
   const userSnap = await getDoc(userRef);
 
   if (userSnap.exists()) {
     return { uid, ...userSnap.data() };
   }
+  
+  // Fallback: Buscar por correo
+  const q = query(collection(db, "users"), where("correo", "==", email));
+  const qSnap = await getDocs(q);
+  if (!qSnap.empty) {
+    return { uid, ...qSnap.docs[0].data() };
+  }
+
   return null;
 }

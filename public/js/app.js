@@ -4,7 +4,7 @@
 import { auth } from "./firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { login, logout, isAuthenticated, getCurrentUser } from "./services/auth.service.js";
-import { obtenerEntregasDelDia } from "./services/entregas.service.js";
+import { obtenerEntregasDelDia, obtenerTodasLasEntregas } from "./services/entregas.service.js";
 import { getCatalogosCompletos } from "./services/catalogos.service.js";
 import { obtenerTodosLosUsuarios } from "./services/users.service.js";
 import { loginView } from "./views/login.view.js";
@@ -24,11 +24,11 @@ export function initApp() {
         if (userData && userData.rol === "ADMIN") {
           // Redirigir a /admin para administradores
           showPage("/admin");
-          loadAdminDashboard();
+
         } else if (userData && userData.rol === "OPERADOR") {
           // Redirigir a /registro para operadores
           showPage("/registro");
-          loadOperadorDashboard(userData.nombre);
+
         } else {
           // Usuario sin rol definido, forzar logout
           logout();
@@ -68,7 +68,6 @@ export function navigateTo(path) {
 function handleRoute(path) {
   if (path === "/login") {
     showPage("/login");
-    loadLogin();
   } else if (path === "/registro") {
     showPage("/registro");
     // El botón de logout en el header llamará a navigateTo("/login")
@@ -81,7 +80,7 @@ function handleRoute(path) {
     }
   } else if (path === "/admin") {
     showPage("/admin");
-    loadAdminDashboard();
+
   } else {
     // Ruta por defecto
     navigateTo("/login");
@@ -97,18 +96,33 @@ function showPage(page) {
   if (!app) return;
 
   app.innerHTML = `
-    <div class="container">
-      <header>
-        <h1 class="logo">Control de Insumos Web</h1>
-        <p class="subtitle">PAB-IN</p>
-      </header>
-      <main>
-        <div id="page-content">
+    <div class="flex flex-col min-h-screen w-full bg-slate-50">
+      <nav class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="flex justify-between h-16 items-center">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 bg-teal-600 rounded-xl flex items-center justify-center shadow-sm text-white font-bold text-xl" style="background: linear-gradient(135deg, #0d9488, #0f766e);">
+                P
+              </div>
+              <h1 class="text-xl font-extrabold text-slate-800 tracking-tight logo">PAB-IN <span class="text-slate-400 font-medium text-sm ml-2 hidden sm:inline-block">Control de Insumos</span></h1>
+            </div>
+            <div class="flex items-center gap-4" id="nav-actions">
+              <!-- Acciones de usuario dinámicas -->
+            </div>
+          </div>
+        </div>
+      </nav>
+      
+      <main class="flex-1 w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        <div id="page-content" class="w-full">
           <!-- Contenido dinámico -->
         </div>
       </main>
-      <footer>
-        <p class="footer-text">© 2026 Control de Insumos Web</p>
+      
+      <footer class="bg-white border-t border-slate-200 mt-auto">
+        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+          <p class="text-center text-sm text-slate-500 font-medium">© 2026 Continental. Todos los derechos reservados.</p>
+        </div>
       </footer>
     </div>
   `;
@@ -162,24 +176,4 @@ export async function loadAdminDashboard() {
   // Aquí se podrían actualizar los datos dinámicamente
   console.log("👥 Usuarios:", usuarios.length);
   console.log("📊 Entregas totales:", entregas.length);
-}
-
-/**
- * Obtiene todas las entregas (sin filtros).
- * @returns {Promise<Array>} Lista de todas las entregas.
- */
-async function obtenerTodasLasEntregas() {
-  try {
-    const entregasRef = collection(db, "registros_entrega");
-    const q = query(entregasRef, orderBy("timestamp", "desc"));
-    const snapshot = await getDocs(q);
-    const entregas = [];
-    snapshot.forEach((doc) => {
-      entregas.push({ id: doc.id, ...doc.data() });
-    });
-    return entregas;
-  } catch (error) {
-    console.error("Error al obtener todas las entregas:", error);
-    throw error;
-  }
 }

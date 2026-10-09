@@ -74,14 +74,21 @@ export async function obtenerEntregasDelDia(uid) {
     const q = query(
       entregasRef,
       where("encargado.uid", "==", uid),
-      where("fecha_registro", ">=", fechaInicio),
-      orderBy("timestamp", "desc")
+      where("fecha_registro", "==", fechaInicio)
     );
     const snapshot = await getDocs(q);
     const entregas = [];
     snapshot.forEach((doc) => {
       entregas.push({ id: doc.id, ...doc.data() });
     });
+    
+    // Ordenar descendente por timestamp en JS para evitar índice compuesto
+    entregas.sort((a, b) => {
+      const tA = a.timestamp ? a.timestamp.toMillis() : 0;
+      const tB = b.timestamp ? b.timestamp.toMillis() : 0;
+      return tB - tA;
+    });
+
     return entregas;
   } catch (error) {
     console.error("Error al obtener entregas del día:", error);

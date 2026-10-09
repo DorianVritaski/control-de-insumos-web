@@ -2,7 +2,7 @@
 // Formulario de Registro de Entregas
 // Según la especificación Spec_Driven_Development.md - Sección 6.2, RF-02
 
-import { registrarEntrega } from "../services/entregas.service.js";
+import { registrarEntrega, obtenerEntregasDelDia } from "../services/entregas.service.js";
 import { getPabellones } from "../services/catalogos.service.js";
 import { isAuthenticated, getCurrentUser } from "../services/auth.service.js";
 
@@ -144,6 +144,9 @@ export function operadorView() {
           const meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
           const fechaStr = `${dias[fecha.getDay()]}, ${fecha.getDate()} de ${meses[fecha.getMonth()]} del ${fecha.getFullYear()}`;
           container.querySelector("#fecha-actual").textContent = fechaStr;
+          
+          const entregas = await obtenerEntregasDelDia(user.uid);
+          container.querySelector("#entregas-contador").textContent = entregas.length;
         } catch (e) {
           console.error("Error al cargar usuario:", e);
         }
@@ -186,6 +189,13 @@ export function operadorView() {
         alertContainer.innerHTML = `<div class="alert alert-success">✅ Entrega registrada exitosamente (ID: ${result.id}).</div>`;
         container.querySelector("#registro-form").reset();
         actualizarCantidadTotal();
+        
+        // Refrescar el contador de entregas
+        if (isAuthenticated()) {
+          const user = await getCurrentUser();
+          const entregas = await obtenerEntregasDelDia(user.uid);
+          container.querySelector("#entregas-contador").textContent = entregas.length;
+        }
       } catch (error) {
         alertContainer.innerHTML = `<div class="alert alert-error">❌ Error: ${error.message}</div>`;
       } finally {
@@ -215,4 +225,5 @@ export function operadorView() {
   }
 
   initView();
+  return container;
 }

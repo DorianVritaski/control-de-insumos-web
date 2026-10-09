@@ -4,7 +4,7 @@
 
 import { db } from "../firebase-config.js";
 import {
-  collection, getDocs, updateDoc, doc, query, orderBy
+  collection, getDocs, getDoc, updateDoc, doc, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const CATALOGOS_COLLECTION = "catalogos";
@@ -15,11 +15,14 @@ const CATALOGOS_COLLECTION = "catalogos";
  */
 export async function getPabellones() {
   try {
-    const q = query(collection(db, CATALOGOS_COLLECTION, "pabellones"), orderBy("nombre", "asc"));
-    const snapshot = await getDocs(q);
-    const pabellones = [];
-    snapshot.forEach((doc) => { pabellones.push(...doc.data().lista); });
-    return pabellones;
+    const docRef = doc(db, CATALOGOS_COLLECTION, "pabellones");
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data().lista || [];
+      // Ordenar alfabéticamente
+      return data.sort((a, b) => a.nombre.localeCompare(b.nombre));
+    }
+    return [];
   } catch (error) {
     console.error("Error al obtener pabellones:", error);
     throw error;
@@ -32,10 +35,12 @@ export async function getPabellones() {
  */
 export async function getInsumos() {
   try {
-    const snapshot = await getDocs(collection(db, CATALOGOS_COLLECTION, "insumos"));
-    const insumos = [];
-    snapshot.forEach((doc) => { insumos.push(...doc.data().lista); });
-    return insumos;
+    const docRef = doc(db, CATALOGOS_COLLECTION, "insumos");
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data().lista || [];
+    }
+    return [];
   } catch (error) {
     console.error("Error al obtener insumos:", error);
     throw error;
@@ -58,21 +63,13 @@ export async function getCatalogosCompletos() {
 
 /**
  * Agrega un nuevo pabellón al catálogo (solo Admin).
- * @param {string} codigo - Código del pabellón (ej. "N", "H", "IC").
- * @param {string} nombre - Nombre del pabellón.
- * @param {number} max_pisos - Número máximo de pisos.
  */
 export async function agregarPabellon(codigo, nombre, max_pisos) {
   try {
-    const pabellonesRef = collection(db, CATALOGOS_COLLECTION, "pabellones");
-    const pabellonesData = await getDocs(pabellonesRef);
-    let lista = [];
-    pabellonesData.forEach((doc) => { lista = doc.data().lista; });
-
+    const lista = await getPabellones();
     if (lista.some((p) => p.codigo === codigo)) {
       throw new Error(`El código "${codigo}" ya está en uso.`);
     }
-
     lista.push({ codigo, nombre, max_pisos });
     await updateDoc(doc(db, CATALOGOS_COLLECTION, "pabellones"), { lista });
     return { codigo, nombre, max_pisos };
@@ -84,22 +81,14 @@ export async function agregarPabellon(codigo, nombre, max_pisos) {
 
 /**
  * Actualiza un pabellón existente.
- * @param {string} codigo - Código del pabellón a actualizar.
- * @param {string} nuevoNombre - Nuevo nombre.
- * @param {number} nuevoMaxPisos - Nuevo máximo de pisos.
  */
 export async function actualizarPabellon(codigo, nuevoNombre, nuevoMaxPisos) {
   try {
-    const pabellonesRef = collection(db, CATALOGOS_COLLECTION, "pabellones");
-    const pabellonesData = await getDocs(pabellonesRef);
-    let lista = [];
-    pabellonesData.forEach((doc) => { lista = doc.data().lista; });
-
+    const lista = await getPabellones();
     const index = lista.findIndex((p) => p.codigo === codigo);
     if (index === -1) {
       throw new Error(`Pabellón con código "${codigo}" no encontrado.`);
     }
-
     lista[index] = { ...lista[index], nombre: nuevoNombre, max_pisos: nuevoMaxPisos };
     await updateDoc(doc(db, CATALOGOS_COLLECTION, "pabellones"), { lista });
     return lista[index];
@@ -111,20 +100,14 @@ export async function actualizarPabellon(codigo, nuevoNombre, nuevoMaxPisos) {
 
 /**
  * Elimina un pabellón del catálogo (solo Admin).
- * @param {string} codigo - Código del pabellón a eliminar.
  */
 export async function eliminarPabellon(codigo) {
   try {
-    const pabellonesRef = collection(db, CATALOGOS_COLLECTION, "pabellones");
-    const pabellonesData = await getDocs(pabellonesRef);
-    let lista = [];
-    pabellonesData.forEach((doc) => { lista = doc.data().lista; });
-
+    const lista = await getPabellones();
     const index = lista.findIndex((p) => p.codigo === codigo);
     if (index === -1) {
       throw new Error(`Pabellón con código "${codigo}" no encontrado.`);
     }
-
     lista.splice(index, 1);
     await updateDoc(doc(db, CATALOGOS_COLLECTION, "pabellones"), { lista });
     return true;
@@ -136,19 +119,13 @@ export async function eliminarPabellon(codigo) {
 
 /**
  * Agrega un nuevo insumo al catálogo (solo Admin).
- * @param {string} nombre - Nombre del insumo (ej. "PAPEL_HIGIENICO", "JABON").
  */
 export async function agregarInsumo(nombre) {
   try {
-    const insumosRef = collection(db, CATALOGOS_COLLECTION, "insumos");
-    const insumosData = await getDocs(insumosRef);
-    let lista = [];
-    insumosData.forEach((doc) => { lista = doc.data().lista; });
-
+    const lista = await getInsumos();
     if (lista.some((i) => i === nombre)) {
       throw new Error(`El insumo "${nombre}" ya está en uso.`);
     }
-
     lista.push(nombre);
     await updateDoc(doc(db, CATALOGOS_COLLECTION, "insumos"), { lista });
     return nombre;
@@ -160,20 +137,14 @@ export async function agregarInsumo(nombre) {
 
 /**
  * Elimina un insumo del catálogo (solo Admin).
- * @param {string} nombre - Nombre del insumo a eliminar.
  */
 export async function eliminarInsumo(nombre) {
   try {
-    const insumosRef = collection(db, CATALOGOS_COLLECTION, "insumos");
-    const insumosData = await getDocs(insumosRef);
-    let lista = [];
-    insumosData.forEach((doc) => { lista = doc.data().lista; });
-
+    const lista = await getInsumos();
     const index = lista.findIndex((i) => i === nombre);
     if (index === -1) {
       throw new Error(`Insumo "${nombre}" no encontrado.`);
     }
-
     lista.splice(index, 1);
     await updateDoc(doc(db, CATALOGOS_COLLECTION, "insumos"), { lista });
     return true;
