@@ -4,7 +4,7 @@
 
 import { db } from "../firebase-config.js";
 import {
-  collection, getDocs, getDoc, updateDoc, doc, query, orderBy
+  collection, getDocs, getDoc, updateDoc, setDoc, doc, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const CATALOGOS_COLLECTION = "catalogos";
@@ -71,7 +71,7 @@ export async function agregarPabellon(codigo, nombre, max_pisos) {
       throw new Error(`El código "${codigo}" ya está en uso.`);
     }
     lista.push({ codigo, nombre, max_pisos });
-    await updateDoc(doc(db, CATALOGOS_COLLECTION, "pabellones"), { lista });
+    await setDoc(doc(db, CATALOGOS_COLLECTION, "pabellones"), { lista }, { merge: true });
     return { codigo, nombre, max_pisos };
   } catch (error) {
     console.error("Error al agregar pabellón:", error);
@@ -90,7 +90,7 @@ export async function actualizarPabellon(codigo, nuevoNombre, nuevoMaxPisos) {
       throw new Error(`Pabellón con código "${codigo}" no encontrado.`);
     }
     lista[index] = { ...lista[index], nombre: nuevoNombre, max_pisos: nuevoMaxPisos };
-    await updateDoc(doc(db, CATALOGOS_COLLECTION, "pabellones"), { lista });
+    await setDoc(doc(db, CATALOGOS_COLLECTION, "pabellones"), { lista }, { merge: true });
     return lista[index];
   } catch (error) {
     console.error("Error al actualizar pabellón:", error);
@@ -109,7 +109,7 @@ export async function eliminarPabellon(codigo) {
       throw new Error(`Pabellón con código "${codigo}" no encontrado.`);
     }
     lista.splice(index, 1);
-    await updateDoc(doc(db, CATALOGOS_COLLECTION, "pabellones"), { lista });
+    await setDoc(doc(db, CATALOGOS_COLLECTION, "pabellones"), { lista }, { merge: true });
     return true;
   } catch (error) {
     console.error("Error al eliminar pabellón:", error);
@@ -127,7 +127,7 @@ export async function agregarInsumo(nombre) {
       throw new Error(`El insumo "${nombre}" ya está en uso.`);
     }
     lista.push(nombre);
-    await updateDoc(doc(db, CATALOGOS_COLLECTION, "insumos"), { lista });
+    await setDoc(doc(db, CATALOGOS_COLLECTION, "insumos"), { lista }, { merge: true });
     return nombre;
   } catch (error) {
     console.error("Error al agregar insumo:", error);
@@ -146,7 +146,7 @@ export async function eliminarInsumo(nombre) {
       throw new Error(`Insumo "${nombre}" no encontrado.`);
     }
     lista.splice(index, 1);
-    await updateDoc(doc(db, CATALOGOS_COLLECTION, "insumos"), { lista });
+    await setDoc(doc(db, CATALOGOS_COLLECTION, "insumos"), { lista }, { merge: true });
     return true;
   } catch (error) {
     console.error("Error al eliminar insumo:", error);
