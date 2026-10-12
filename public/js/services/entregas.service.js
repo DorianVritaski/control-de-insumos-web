@@ -6,6 +6,7 @@ import { db } from "../firebase-config.js";
 import {
   collection,
   getDocs,
+  getDoc,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -20,32 +21,30 @@ const REGISTROS_COLECCION = "registros_entrega";
 
 /**
  * Registra una nueva entrega (módulo Operador).
- * @param {string} insumo - Tipo de insumo.
- * @param {string} pabellon - Código del pabellón.
- * @param {number|null} piso - Número de piso (null si es lote/almacén).
- * @param {number} damas - Cantidad para damas.
- * @param {number} varones - Cantidad para varones.
- * @param {number} discapacitado - Cantidad para discapacitados.
- * @param {string} encargado - Nombre del encargado.
- * @param {string} encargadoDni - DNI del encargado.
- * @param {string} encargadoUid - UID del operador.
- * @param {string|null} observaciones - Observaciones opcionales.
- * @returns {Promise<Object>} Registro creado.
  */
-export async function registrarEntrega(insumo, pabellon, piso, damas, varones, discapacitado, encargado, encargadoDni, encargadoUid, observaciones = null) {
+export async function registrarEntrega(insumo, pabellon, piso, damas, varones, discapacitado, cantidadTotalManual, encargado, encargadoDni, encargadoUid, observaciones = null) {
   try {
-    const cantidadTotal = damas + varones + discapacitado;
-    const esLote = (piso === null || piso === 0) && damas === 0 && varones === 0 && discapacitado === 0;
+    const d = parseInt(damas) || 0;
+    const v = parseInt(varones) || 0;
+    const dc = parseInt(discapacitado) || 0;
+    const sumaDesglose = d + v + dc;
+    const totalFinal = parseInt(cantidadTotalManual) || sumaDesglose;
+    const pisoNum = piso ? parseInt(piso) : null;
+
+    // REGULARIZADO solo si el desglose existe y coincide con el total
+    const tieneDesglose = sumaDesglose > 0;
+    const desgloseCoincide = tieneDesglose && sumaDesglose === totalFinal;
+    const estado = desgloseCoincide ? "REGULARIZADO" : "POR_REGULARIZAR";
 
     const registroData = {
       fecha_registro: new Date().toISOString().split("T")[0],
       insumo,
-      cantidad_total: esLote ? undefined : cantidadTotal,
+      cantidad_total: totalFinal,
       pabellon,
-      piso: esLote ? null : piso,
-      detalle_banos: esLote ? null : { damas, varones, discapacitado },
-      estado: esLote ? "POR_REGULARIZAR" : "REGULARIZADO",
-      encargado: { uid: encargadoUid, nombre: encargado, dni: encargadoDni },
+      piso: pisoNum,
+      detalle_banos: { damas: d, varones: v, discapacitado: dc },
+      estado,
+      encargado: { uid: encargadoUid || null, nombre: encargado, dni: encargadoDni },
       observaciones: observaciones || null,
       regularizado_por: null,
       fecha_regularizacion: null,
@@ -61,6 +60,8 @@ export async function registrarEntrega(insumo, pabellon, piso, damas, varones, d
     throw error;
   }
 }
+
+
 
 /**
  * Obtiene todas las entregas del día del usuario logueado (Operador).
@@ -82,7 +83,6 @@ export async function obtenerEntregasDelDia(uid) {
       entregas.push({ id: doc.id, ...doc.data() });
     });
     
-    // Ordenar descendente por timestamp en JS para evitar índice compuesto
     entregas.sort((a, b) => {
       const tA = a.timestamp ? a.timestamp.toMillis() : 0;
       const tB = b.timestamp ? b.timestamp.toMillis() : 0;
@@ -95,6 +95,34 @@ export async function obtenerEntregasDelDia(uid) {
     throw error;
   }
 }
+
+/**
+ * Obtiene TODOS los registros de un operador (histórico completo).
+ * @param {string} uid - UID del operador.
+ * @returns {Promise<Array>} Lista de entregas del operador.
+ */
+export async function obtenerEntregasDelOperador(uid) {
+  try {
+    const entregasRef = collection(db, REGISTROS_COLECCION);
+    const q = query(entregasRef, where("encargado.uid", "==", uid));
+    const snapshot = await getDocs(q);
+    const entregas = [];
+    snapshot.forEach((d) => {
+      entregas.push({ id: d.id, ...d.data() });
+    });
+    // Ordenar por fecha desc en JS
+    entregas.sort((a, b) => {
+      const tA = a.timestamp ? a.timestamp.toMillis() : 0;
+      const tB = b.timestamp ? b.timestamp.toMillis() : 0;
+      return tB - tA;
+    });
+    return entregas;
+  } catch (error) {
+    console.error("Error al obtener entregas del operador:", error);
+    throw error;
+  }
+}
+
 
 /**
  * Obtiene todas las entregas (sin filtros).
@@ -127,36 +155,31 @@ export async function obtenerTodasLasEntregas() {
  */
 export async function filtrarEntregas(fechaInicio = null, fechaFin = null, insumo = null, pabellon = null, estado = null) {
   try {
+    // Traer todo y filtrar en JS para evitar errores de índices compuestos
     const entregasRef = collection(db, REGISTROS_COLECCION);
-    let q = query(entregasRef, orderBy("timestamp", "desc"));
+    const snapshot = await getDocs(entregasRef);
+    let entregas = [];
+    snapshot.forEach((d) => { entregas.push({ id: d.id, ...d.data() }); });
 
-    if (fechaInicio) {
-      q = query(q, where("fecha_registro", ">=", fechaInicio));
-    }
-    if (fechaFin) {
-      q = query(q, where("fecha_registro", "<=", fechaFin));
-    }
-    if (insumo) {
-      q = query(q, where("insumo", "==", insumo));
-    }
-    if (pabellon) {
-      q = query(q, where("pabellon", "==", pabellon));
-    }
-    if (estado) {
-      q = query(q, where("estado", "==", estado));
-    }
+    if (fechaInicio) entregas = entregas.filter(e => e.fecha_registro >= fechaInicio);
+    if (fechaFin)    entregas = entregas.filter(e => e.fecha_registro <= fechaFin);
+    if (insumo)      entregas = entregas.filter(e => e.insumo === insumo);
+    if (pabellon)    entregas = entregas.filter(e => e.pabellon === pabellon);
+    if (estado)      entregas = entregas.filter(e => e.estado === estado);
 
-    const snapshot = await getDocs(q);
-    const entregas = [];
-    snapshot.forEach((doc) => {
-      entregas.push({ id: doc.id, ...doc.data() });
+    entregas.sort((a, b) => {
+      const tA = a.timestamp ? a.timestamp.toMillis() : 0;
+      const tB = b.timestamp ? b.timestamp.toMillis() : 0;
+      return tB - tA;
     });
+
     return entregas;
   } catch (error) {
     console.error("Error al filtrar entregas:", error);
     throw error;
   }
 }
+
 
 /**
  * Regulariza una entrega en estado POR_REGULARIZAR (módulo Admin).

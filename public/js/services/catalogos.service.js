@@ -153,3 +153,37 @@ export async function eliminarInsumo(nombre) {
     throw error;
   }
 }
+
+/**
+ * Obtiene el stock de todos los insumos.
+ * @returns {Promise<Object>} Objeto { INSUMO: cantidad, ... }
+ */
+export async function getStock() {
+  try {
+    const docRef = doc(db, CATALOGOS_COLLECTION, "stock");
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data();
+    }
+    return {};
+  } catch (error) {
+    console.error("Error al obtener stock:", error);
+    throw error;
+  }
+}
+
+/**
+ * Actualiza el stock de un insumo específico (Admin).
+ * @param {string} insumo - Nombre del insumo.
+ * @param {number} cantidad - Nueva cantidad en stock.
+ */
+export async function actualizarStock(insumo, cantidad) {
+  try {
+    const docRef = doc(db, CATALOGOS_COLLECTION, "stock");
+    await setDoc(docRef, { [insumo]: cantidad }, { merge: true });
+    return { insumo, cantidad };
+  } catch (error) {
+    console.error("Error al actualizar stock:", error);
+    throw error;
+  }
+}
