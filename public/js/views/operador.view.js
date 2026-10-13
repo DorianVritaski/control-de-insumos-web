@@ -3,8 +3,9 @@
 // Según la especificación Spec_Driven_Development.md - Sección 6.2, RF-02
 
 import { registrarEntrega, obtenerEntregasDelDia, obtenerEntregasDelOperador, actualizarEntrega } from "../services/entregas.service.js";
-import { getPabellones, getInsumos } from "../services/catalogos.service.js";
+import { getPabellones, getInsumos, getStock } from "../services/catalogos.service.js";
 import { isAuthenticated, getCurrentUser } from "../services/auth.service.js";
+
 
 export function operadorView() {
   const container = document.createElement("div");
@@ -22,8 +23,10 @@ export function operadorView() {
         <nav class="flex gap-1 -mb-px">
           <button data-tab="registro" class="op-tab-btn active px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-teal-600 text-teal-700 bg-teal-50 transition-all whitespace-nowrap">📦 Registrar Entrega</button>
           <button data-tab="historial" class="op-tab-btn px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all whitespace-nowrap">📋 Mis Registros</button>
+          <button data-tab="stock" class="op-tab-btn px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all whitespace-nowrap">📊 Stock Disponible</button>
         </nav>
       </div>
+
 
       <!-- ===== TAB REGISTRO ===== -->
       <div class="op-tab-panel p-6" id="op-tab-registro">
@@ -140,6 +143,16 @@ export function operadorView() {
               </div>
             </div>
 
+            <!-- Stock de insumos (sidebar) -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <div class="px-5 py-4 border-b border-slate-100" style="background:linear-gradient(135deg,#92400e,#78350f);">
+                <h4 class="font-bold text-white text-sm">📊 Stock Disponible</h4>
+              </div>
+              <div id="stock-sidebar" class="p-4 space-y-2 max-h-52 overflow-y-auto">
+                <p class="text-xs text-slate-400 text-center py-2">Cargando...</p>
+              </div>
+            </div>
+
             <!-- Historial rápido del día -->
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
               <div class="px-5 py-4 border-b border-slate-100">
@@ -185,6 +198,20 @@ export function operadorView() {
               <tr><td colspan="10" class="text-center text-slate-400 py-8">Cargando registros...</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- ===== TAB STOCK DISPONIBLE ===== -->
+      <div class="op-tab-panel p-6 hidden" id="op-tab-stock">
+        <div class="mb-4 flex items-center justify-between">
+          <div>
+            <h3 class="text-lg font-bold text-slate-800">📊 Stock Disponible de Insumos</h3>
+            <p class="text-sm text-slate-400 mt-0.5">Visualización en tiempo real del inventario actual. Solo el administrador puede ajustar los valores.</p>
+          </div>
+          <button id="btn-refresh-stock" class="btn btn-secondary text-sm">🔄 Actualizar</button>
+        </div>
+        <div id="op-stock-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div class="col-span-full text-center text-slate-400 py-10">Cargando stock...</div>
         </div>
       </div>
     </div>
@@ -360,6 +387,79 @@ export function operadorView() {
     await cargarCatalogos();
     actualizarTotal();
 
+    // ====== STOCK ======
+    let stockCache = {};
+
+    function renderStockSidebar(stock, insumos) {
+      const div = container.querySelector('#stock-sidebar');
+      if (!div) return;
+      if (!insumos.length) { div.innerHTML = '<p class="text-xs text-slate-400 text-center py-2">Sin insumos.</p>'; return; }
+      div.innerHTML = insumos.map(i => {
+        const qty = stock[i] ?? 0;
+        const bajo = qty <= 10;
+        const agotado = qty === 0;
+        return `
+          <div class="flex items-center justify-between gap-2 py-1.5 border-b border-slate-100 last:border-0">
+            <span class="text-xs text-slate-600 truncate flex-1" title="${i}">${i.replace(/_/g,' ')}</span>
+            <span class="text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${agotado?'bg-red-100 text-red-700':bajo?'bg-amber-100 text-amber-700':'bg-emerald-100 text-emerald-700'}">${qty} u.</span>
+          </div>`;
+      }).join('');
+    }
+
+    function renderStockTab(stock, insumos) {
+      const grid = container.querySelector('#op-stock-grid');
+      if (!grid) return;
+      if (!insumos.length) { grid.innerHTML = '<div class="col-span-full text-center text-slate-400 py-10">No hay insumos registrados.</div>'; return; }
+      grid.innerHTML = insumos.map(i => {
+        const qty = stock[i] ?? 0;
+        const agotado = qty === 0;
+        const bajo = qty > 0 && qty <= 10;
+        const normal = qty > 10 && qty <= 50;
+        // Barra de progreso: máximo visual 200 unidades
+        const porcentaje = Math.min(100, (qty / 200) * 100);
+        const colorBarra = agotado ? '#ef4444' : bajo ? '#f59e0b' : '#10b981';
+        const colorBg    = agotado ? 'bg-red-50 border-red-200' : bajo ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200';
+        const colorText  = agotado ? 'text-red-700' : bajo ? 'text-amber-700' : 'text-emerald-700';
+        const etiqueta   = agotado ? '🔴 Agotado' : bajo ? '🟡 Stock Bajo' : '🟢 Disponible';
+        return `
+          <div class="bg-white rounded-2xl border ${colorBg} p-5 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex items-start justify-between mb-3">
+              <div>
+                <p class="font-bold text-slate-800 text-sm leading-tight">${i.replace(/_/g,' ')}</p>
+                <span class="inline-flex items-center text-xs font-semibold mt-1 ${colorText}">${etiqueta}</span>
+              </div>
+              <span class="text-3xl font-extrabold ${colorText} font-mono">${qty}</span>
+            </div>
+            <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+              <div class="h-2 rounded-full transition-all duration-500" style="width:${porcentaje}%;background:${colorBarra};"></div>
+            </div>
+            <p class="text-xs text-slate-400 mt-1.5">unidades disponibles</p>
+          </div>`;
+      }).join('');
+    }
+
+    async function cargarStock() {
+      try {
+        stockCache = await getStock();
+        renderStockSidebar(stockCache, insumosData);
+        renderStockTab(stockCache, insumosData);
+      } catch(e) {
+        const div = container.querySelector('#stock-sidebar');
+        if (div) div.innerHTML = '<p class="text-xs text-red-400 text-center py-2">Error al cargar.</p>';
+      }
+    }
+
+    await cargarStock();
+
+    container.querySelector('#btn-refresh-stock')?.addEventListener('click', cargarStock);
+
+    // Al hacer tab a stock, actualizar
+    container.querySelectorAll('.op-tab-btn').forEach(btn => {
+      if (btn.dataset.tab === 'stock') {
+        btn.addEventListener('click', cargarStock);
+      }
+    });
+
     // ====== REGISTRAR ENTREGA ======
     container.querySelector("#registro-form").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -394,6 +494,8 @@ export function operadorView() {
         alertaDesglose.className = 'text-xs mt-2 hidden'; alertaDesglose.textContent = '';
         actualizarTotal();
         if (currentUser) await renderHistorialRapido(currentUser.uid);
+        await cargarStock(); // Refrescar stock tras registrar entrega
+
       } catch(error) {
         alertContainer.innerHTML = `<div class="alert alert-error">❌ Error: ${error.message}</div>`;
       } finally { btnRegistrar.disabled = false; btnRegistrar.textContent = "✓ Registrar Entrega"; actualizarTotal(); }

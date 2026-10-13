@@ -175,7 +175,7 @@ export async function getStock() {
 /**
  * Actualiza el stock de un insumo específico (Admin).
  * @param {string} insumo - Nombre del insumo.
- * @param {number} cantidad - Nueva cantidad en stock.
+ * @param {number} cantidad - Nueva cantidad total en stock.
  */
 export async function actualizarStock(insumo, cantidad) {
   try {
@@ -184,6 +184,26 @@ export async function actualizarStock(insumo, cantidad) {
     return { insumo, cantidad };
   } catch (error) {
     console.error("Error al actualizar stock:", error);
+    throw error;
+  }
+}
+
+/**
+ * Resta unidades del stock de un insumo al registrar una entrega.
+ * Si el stock resultante sería negativo, lo deja en 0.
+ * @param {string} insumo - Nombre del insumo.
+ * @param {number} cantidad - Unidades a restar.
+ */
+export async function restarStock(insumo, cantidad) {
+  try {
+    const stockActual = await getStock();
+    const actual = stockActual[insumo] ?? 0;
+    const nuevo = Math.max(0, actual - cantidad);
+    const docRef = doc(db, CATALOGOS_COLLECTION, "stock");
+    await setDoc(docRef, { [insumo]: nuevo }, { merge: true });
+    return { insumo, stockAnterior: actual, stockNuevo: nuevo };
+  } catch (error) {
+    console.error("Error al restar stock:", error);
     throw error;
   }
 }

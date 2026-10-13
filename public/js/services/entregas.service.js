@@ -16,8 +16,21 @@ import {
   orderBy,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { restarStock } from "./catalogos.service.js";
 
 const REGISTROS_COLECCION = "registros_entrega";
+
+/**
+ * Devuelve la fecha local del dispositivo en formato YYYY-MM-DD.
+ * Evita el bug de UTC donde las 23:xx hora local es el día siguiente en UTC.
+ */
+function fechaLocal() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dia}`;
+}
 
 /**
  * Registra una nueva entrega (módulo Operador).
@@ -37,7 +50,7 @@ export async function registrarEntrega(insumo, pabellon, piso, damas, varones, d
     const estado = desgloseCoincide ? "REGULARIZADO" : "POR_REGULARIZAR";
 
     const registroData = {
-      fecha_registro: new Date().toISOString().split("T")[0],
+      fecha_registro: fechaLocal(),
       insumo,
       cantidad_total: totalFinal,
       pabellon,
@@ -53,6 +66,11 @@ export async function registrarEntrega(insumo, pabellon, piso, damas, varones, d
 
     const entregasRef = collection(db, REGISTROS_COLECCION);
     const docRef = await addDoc(entregasRef, registroData);
+
+    // Descontar del stock dinámicamente
+    if (totalFinal > 0) {
+      try { await restarStock(insumo, totalFinal); } catch(e) { console.warn("No se pudo actualizar el stock:", e.message); }
+    }
 
     return { id: docRef.id, ...registroData };
   } catch (error) {
@@ -71,11 +89,11 @@ export async function registrarEntrega(insumo, pabellon, piso, damas, varones, d
 export async function obtenerEntregasDelDia(uid) {
   try {
     const entregasRef = collection(db, REGISTROS_COLECCION);
-    const fechaInicio = new Date(new Date().setHours(0, 0, 0, 0)).toISOString().split("T")[0];
+    const fechaHoy = fechaLocal();
     const q = query(
       entregasRef,
       where("encargado.uid", "==", uid),
-      where("fecha_registro", "==", fechaInicio)
+      where("fecha_registro", "==", fechaHoy)
     );
     const snapshot = await getDocs(q);
     const entregas = [];
@@ -212,7 +230,8 @@ export async function regularizarEntrega(entregaId, piso, damas, varones, discap
       cantidad_total: cantidadTotal,
       estado: "REGULARIZADO",
       regularizado_por: regularizadoPor,
-      fecha_regularizacion: new Date().toISOString().split("T")[0]
+      fecha_regularizacion: fechaLocal()
+
     };
 
     await updateDoc(entregaRef, actualizacion);
