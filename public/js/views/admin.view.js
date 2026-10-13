@@ -7,7 +7,8 @@ import {
   getCatalogosCompletos,
   agregarPabellon, actualizarPabellon, eliminarPabellon,
   agregarInsumo, eliminarInsumo,
-  getStock, actualizarStock
+  getStock, actualizarStock,
+  registrarIngresoStock, obtenerIngresosStock, eliminarIngresoStock
 } from "../services/catalogos.service.js";
 import { obtenerTodosLosUsuarios, registrarUsuario, cambiarEstadoUsuario } from "../services/users.service.js";
 import { getCurrentUser } from "../services/auth.service.js";
@@ -93,7 +94,7 @@ export function adminView() {
       <!-- ===== TAB CATÁLOGOS & STOCK ===== -->
       <div class="tab-panel p-6 hidden" id="tab-catalogos">
         <div id="alert-catalogos"></div>
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
           <!-- Pabellones -->
           <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -138,18 +139,85 @@ export function adminView() {
             </div>
           </div>
 
-          <!-- Stock -->
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div class="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-orange-50 flex items-center gap-2">
-              <span class="text-xl">📊</span><h3 class="font-bold text-slate-800 text-base">Stock de Insumos</h3>
+          <!-- Stock + Ingresos -->
+          <div class="lg:col-span-3 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-orange-50 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-xl">📊</span>
+                <h3 class="font-bold text-slate-800 text-base">Stock &amp; Ingresos Mensuales</h3>
+              </div>
+              <div class="flex gap-2">
+                <button id="btn-show-stock" class="stock-view-btn text-xs px-3 py-1.5 rounded-lg font-semibold bg-amber-500 text-white transition-all">📊 Stock Actual</button>
+                <button id="btn-show-ingresos" class="stock-view-btn text-xs px-3 py-1.5 rounded-lg font-semibold bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all">📥 Ingresos</button>
+              </div>
             </div>
-            <div class="p-5">
-              <p class="text-xs text-slate-500 mb-4">Ingresa o ajusta el stock disponible. Se descuenta automáticamente al registrar entregas.</p>
+
+            <!-- Vista: Stock Actual -->
+            <div id="panel-stock-actual" class="p-5">
+              <p class="text-xs text-slate-500 mb-4">Ajusta el stock disponible manualmente. Se descuenta automáticamente con cada entrega registrada.</p>
               <div id="lista-stock" class="space-y-3">
                 <div class="text-center text-slate-400 py-6 text-sm">Cargando...</div>
               </div>
             </div>
+
+            <!-- Vista: Ingresos Mensuales -->
+            <div id="panel-ingresos" class="p-5 hidden">
+
+              <!-- Formulario nuevo ingreso -->
+              <div class="bg-amber-50 rounded-xl border border-amber-200 p-4 mb-5">
+                <p class="text-xs font-bold text-amber-700 uppercase mb-3">📥 Registrar Pedido Mensual</p>
+                <form id="form-ingreso-stock">
+                  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                    <div>
+                      <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase">Insumo *</label>
+                      <select id="ing-insumo" class="form-input text-sm" required><option value="">Seleccione...</option></select>
+                    </div>
+                    <div>
+                      <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase">Cantidad *</label>
+                      <input type="number" id="ing-cantidad" class="form-input text-sm" min="1" placeholder="Ej: 500" required>
+                    </div>
+                    <div>
+                      <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase">Fecha del Pedido *</label>
+                      <input type="date" id="ing-fecha" class="form-input text-sm" required>
+                    </div>
+                    <div>
+                      <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase">Notas</label>
+                      <input type="text" id="ing-notas" class="form-input text-sm" placeholder="Ej: Pedido regular">
+                    </div>
+                  </div>
+                  <button type="submit" id="btn-registrar-ingreso" class="btn btn-primary text-sm">✓ Registrar Ingreso</button>
+                </form>
+              </div>
+
+              <!-- Filtros historial -->
+              <div class="flex flex-wrap items-end gap-3 mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase">Filtrar por Mes</label>
+                  <input type="month" id="ing-filtro-mes" class="form-input text-sm">
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase">Insumo</label>
+                  <select id="ing-filtro-insumo" class="form-input text-sm"><option value="">Todos</option></select>
+                </div>
+                <button id="btn-ing-filtrar" class="btn btn-secondary text-sm">🔍 Filtrar</button>
+                <button id="btn-ing-todos" class="btn btn-secondary text-sm">Ver todos</button>
+                <button id="btn-ing-excel" class="btn text-sm text-white font-semibold" style="background:#217346;">📥 Excel</button>
+              </div>
+
+              <!-- Resumen por mes (cards) -->
+              <div id="ing-resumen-mes" class="mb-4"></div>
+
+              <!-- Tabla historial -->
+              <div class="table-responsive">
+                <table>
+                  <thead><tr><th>Mes</th><th>Fecha Pedido</th><th>Insumo</th><th>Cantidad</th><th>Registrado por</th><th>Notas</th><th>Acciones</th></tr></thead>
+                  <tbody id="tbody-ingresos"><tr><td colspan="7" class="text-center text-slate-400 py-6">Cargando...</td></tr></tbody>
+                </table>
+              </div>
+              <p id="ing-count" class="text-xs text-slate-400 mt-2"></p>
+            </div>
           </div>
+
         </div>
       </div>
 
@@ -482,6 +550,188 @@ async function initAdminView(container) {
     [catalogos, stockData] = await Promise.all([getCatalogosCompletos(), getStock()]);
     sincFiltros(); renderPabellones(); renderInsumos(); renderStock();
   } catch(err) { console.error("Error cargando catálogos:", err); }
+
+  // ====== SWITCH VISTAS STOCK / INGRESOS ======
+  function sincIngFiltroInsumo() {
+    const sel = container.querySelector('#ing-filtro-insumo');
+    const selForm = container.querySelector('#ing-insumo');
+    if (!sel || !selForm) return;
+    const v = sel.value;
+    sel.innerHTML = '<option value="">Todos</option>';
+    selForm.innerHTML = '<option value="">Seleccione...</option>';
+    catalogos.insumos.forEach(i => {
+      const o1 = document.createElement('option'); o1.value = i; o1.textContent = i.replace(/_/g,' '); sel.appendChild(o1);
+      const o2 = document.createElement('option'); o2.value = i; o2.textContent = i.replace(/_/g,' '); selForm.appendChild(o2);
+    });
+    sel.value = v;
+  }
+  sincIngFiltroInsumo();
+
+  container.querySelector('#btn-show-stock').addEventListener('click', () => {
+    container.querySelector('#panel-stock-actual').classList.remove('hidden');
+    container.querySelector('#panel-ingresos').classList.add('hidden');
+    container.querySelector('#btn-show-stock').className = 'stock-view-btn text-xs px-3 py-1.5 rounded-lg font-semibold bg-amber-500 text-white transition-all';
+    container.querySelector('#btn-show-ingresos').className = 'stock-view-btn text-xs px-3 py-1.5 rounded-lg font-semibold bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all';
+  });
+  container.querySelector('#btn-show-ingresos').addEventListener('click', () => {
+    container.querySelector('#panel-stock-actual').classList.add('hidden');
+    container.querySelector('#panel-ingresos').classList.remove('hidden');
+    container.querySelector('#btn-show-ingresos').className = 'stock-view-btn text-xs px-3 py-1.5 rounded-lg font-semibold bg-amber-500 text-white transition-all';
+    container.querySelector('#btn-show-stock').className = 'stock-view-btn text-xs px-3 py-1.5 rounded-lg font-semibold bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all';
+    cargarHistorialIngresos();
+  });
+
+  // ====== HISTORIAL DE INGRESOS ======
+  let ingresosCache = [];
+
+  function renderResumenMes(ingresos) {
+    const resumenDiv = container.querySelector('#ing-resumen-mes');
+    if (!resumenDiv || !ingresos.length) { if (resumenDiv) resumenDiv.innerHTML = ''; return; }
+    // Agrupar por mes
+    const porMes = {};
+    ingresos.forEach(ing => {
+      if (!porMes[ing.mes]) porMes[ing.mes] = {};
+      porMes[ing.mes][ing.insumo] = (porMes[ing.mes][ing.insumo] || 0) + ing.cantidad;
+    });
+    const meses = Object.keys(porMes).sort((a,b) => b.localeCompare(a)).slice(0,3); // últimos 3 meses
+    const mesesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    resumenDiv.innerHTML = `
+      <p class="text-xs font-bold text-slate-500 uppercase mb-2">📅 Resumen por Mes (últimos ${meses.length})</p>
+      <div class="grid grid-cols-1 sm:grid-cols-${Math.min(meses.length,3)} gap-3 mb-4">
+        ${meses.map(mes => {
+          const [y, m] = mes.split('-');
+          const nombreMes = `${mesesNombres[parseInt(m)-1]} ${y}`;
+          const insumos = porMes[mes];
+          const totalUnidades = Object.values(insumos).reduce((a,b) => a+b, 0);
+          return `
+            <div class="p-4 bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl border border-amber-200">
+              <p class="font-bold text-amber-800 text-sm mb-2">${nombreMes}</p>
+              <p class="text-2xl font-extrabold text-amber-700 mb-2">${totalUnidades.toLocaleString()} u.</p>
+              <div class="space-y-1">
+                ${Object.entries(insumos).map(([ins, qty]) =>
+                  `<div class="flex justify-between text-xs"><span class="text-slate-600 truncate">${ins.replace(/_/g,' ')}</span><span class="font-bold text-amber-700 ml-2">${qty}</span></div>`
+                ).join('')}
+              </div>
+            </div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  function renderTablaIngresos(ingresos) {
+    const tbody = container.querySelector('#tbody-ingresos');
+    const count = container.querySelector('#ing-count');
+    if (!ingresos.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-slate-400 py-8">Sin ingresos registrados.</td></tr>';
+      if (count) count.textContent = '';
+      return;
+    }
+    const mesesNombres = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    tbody.innerHTML = '';
+    ingresos.forEach(ing => {
+      const [y, m] = (ing.mes || '').split('-');
+      const mesesNombres2 = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+      const mesLabel = m ? `${mesesNombres2[parseInt(m)]} ${y}` : (ing.mes || '-');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="font-semibold text-amber-700 text-sm">${mesLabel}</td>
+        <td class="text-sm text-slate-600">${ing.fecha || ing.fecha_registro || '-'}</td>
+        <td class="text-sm font-medium">${(ing.insumo||'').replace(/_/g,' ')}</td>
+        <td class="text-sm text-center font-bold text-slate-800">${(ing.cantidad||0).toLocaleString()}</td>
+        <td class="text-sm">${ing.registrado_por||'-'}</td>
+        <td class="text-sm text-slate-500 max-w-xs truncate" title="${ing.notas||''}">${ing.notas||'—'}</td>
+        <td><button class="btn-del-ing text-xs px-2 py-1 rounded text-red-500 hover:bg-red-50 transition-colors" data-id="${ing.id}">🗑️</button></td>`;
+      tbody.appendChild(tr);
+    });
+    container.querySelectorAll('.btn-del-ing').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('¿Eliminar este registro de ingreso?')) return;
+        try {
+          await eliminarIngresoStock(btn.dataset.id);
+          ingresosCache = ingresosCache.filter(i => i.id !== btn.dataset.id);
+          renderResumenMes(ingresosCache);
+          renderTablaIngresos(ingresosCache);
+          showAlert('#alert-catalogos', '✅ Ingreso eliminado.');
+        } catch(e) { showAlert('#alert-catalogos','❌ '+e.message,'error'); }
+      });
+    });
+    if (count) count.textContent = `${ingresos.length} ingreso(s) encontrado(s).`;
+  }
+
+  async function cargarHistorialIngresos() {
+    const tbody = container.querySelector('#tbody-ingresos');
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-slate-400 py-6">Cargando...</td></tr>';
+    try {
+      ingresosCache = await obtenerIngresosStock();
+      renderResumenMes(ingresosCache);
+      renderTablaIngresos(ingresosCache);
+    } catch(e) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-red-400 py-6">Error al cargar.</td></tr>';
+    }
+  }
+
+  function filtrarIngresos() {
+    const mes = container.querySelector('#ing-filtro-mes').value; // YYYY-MM
+    const insumo = container.querySelector('#ing-filtro-insumo').value;
+    let result = [...ingresosCache];
+    if (mes) result = result.filter(i => i.mes === mes);
+    if (insumo) result = result.filter(i => i.insumo === insumo);
+    renderResumenMes(result);
+    renderTablaIngresos(result);
+  }
+
+  container.querySelector('#btn-ing-filtrar').addEventListener('click', filtrarIngresos);
+  container.querySelector('#btn-ing-todos').addEventListener('click', () => {
+    container.querySelector('#ing-filtro-mes').value = '';
+    container.querySelector('#ing-filtro-insumo').value = '';
+    renderResumenMes(ingresosCache);
+    renderTablaIngresos(ingresosCache);
+  });
+
+  // Exportar Excel de ingresos
+  container.querySelector('#btn-ing-excel').addEventListener('click', () => {
+    const mes = container.querySelector('#ing-filtro-mes').value;
+    const insumo = container.querySelector('#ing-filtro-insumo').value;
+    let datos = [...ingresosCache];
+    if (mes) datos = datos.filter(i => i.mes === mes);
+    if (insumo) datos = datos.filter(i => i.insumo === insumo);
+    if (!datos.length) return alert('No hay datos para exportar.');
+    const header = ['MES','FECHA PEDIDO','INSUMO','CANTIDAD','REGISTRADO POR','NOTAS'];
+    const rows = datos.map(i => [i.mes, i.fecha || i.fecha_registro, i.insumo, i.cantidad, i.registrado_por, i.notas||'']);
+    const csv = '\uFEFF' + [header,...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url;
+    a.download = `ingresos_stock_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  });
+
+  // Registrar nuevo ingreso
+  container.querySelector('#form-ingreso-stock').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const insumo  = container.querySelector('#ing-insumo').value;
+    const cantidad = parseInt(container.querySelector('#ing-cantidad').value) || 0;
+    const fecha   = container.querySelector('#ing-fecha').value;   // YYYY-MM-DD
+    const notas   = container.querySelector('#ing-notas').value.trim();
+    if (!insumo || !cantidad || !fecha) { showAlert('#alert-catalogos','⚠️ Completa Insumo, Cantidad y Fecha.','error'); return; }
+    const btn = container.querySelector('#btn-registrar-ingreso');
+    btn.disabled = true; btn.textContent = 'Registrando...';
+    try {
+      const user = await getCurrentUser().catch(() => null);
+      const nombreAdmin = user?.nombre_completo || 'Admin';
+      const ingreso = await registrarIngresoStock(insumo, cantidad, fecha, notas, nombreAdmin);
+      ingresosCache.unshift(ingreso);
+      sincIngFiltroInsumo();
+      renderResumenMes(ingresosCache);
+      renderTablaIngresos(ingresosCache);
+      // Refrescar panel de stock actual
+      stockData = await getStock();
+      renderStock();
+      e.target.reset();
+      const mes = ingreso.mes;
+      showAlert('#alert-catalogos', `✅ Ingreso de ${cantidad} unidades de "${insumo.replace(/_/g,' ')}" registrado para ${fecha}. Stock actual actualizado.`);
+    } catch(err) { showAlert('#alert-catalogos','❌ '+err.message,'error'); }
+    finally { btn.disabled = false; btn.textContent = '✓ Registrar Ingreso'; }
+  });
 
   // Agregar pabellón
   container.querySelector('#form-add-pabellon').addEventListener('submit', async (e) => {

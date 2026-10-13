@@ -191,8 +191,6 @@ export async function actualizarStock(insumo, cantidad) {
 /**
  * Resta unidades del stock de un insumo al registrar una entrega.
  * Si el stock resultante sería negativo, lo deja en 0.
- * @param {string} insumo - Nombre del insumo.
- * @param {number} cantidad - Unidades a restar.
  */
 export async function restarStock(insumo, cantidad) {
   try {
@@ -204,6 +202,109 @@ export async function restarStock(insumo, cantidad) {
     return { insumo, stockAnterior: actual, stockNuevo: nuevo };
   } catch (error) {
     console.error("Error al restar stock:", error);
+    throw error;
+  }
+}
+
+/**
+ * Suma unidades al stock actual de un insumo (al registrar un pedido mensual).
+ * @param {string} insumo - Nombre del insumo.
+ * @param {number} cantidad - Unidades a sumar.
+ */
+export async function sumarStock(insumo, cantidad) {
+  try {
+    const stockActual = await getStock();
+    const actual = stockActual[insumo] ?? 0;
+    const nuevo = actual + (parseInt(cantidad) || 0);
+    const docRef = doc(db, CATALOGOS_COLLECTION, "stock");
+    await setDoc(docRef, { [insumo]: nuevo }, { merge: true });
+    return { insumo, stockAnterior: actual, stockNuevo: nuevo };
+  } catch (error) {
+    console.error("Error al sumar stock:", error);
+    throw error;
+  }
+}
+
+/**
+ * Registra un pedido mensual de stock Y suma al stock actual.
+ * @param {string} insumo - Nombre del insumo.
+ * @param {number} cantidad - Unidades del pedido.
+ * @param {string} fecha - Fecha del pedido en formato YYYY-MM-DD.
+ * @param {string} notas - Notas del pedido.
+ * @param {string} registradoPorNombre - Nombre del administrador.
+ */
+export async function registrarIngresoStock(insumo, cantidad, fecha, notas, registradoPorNombre) {
+  try {
+    const cantidadNum = parseInt(cantidad) || 0;
+    // Derivar mes YYYY-MM desde la fecha completa
+    const mes = fecha ? fecha.substring(0, 7) : (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    })();
+
+    const docRef = doc(db, CATALOGOS_COLLECTION, "ingresos_stock");
+    const docSnap = await getDoc(docRef);
+    const lista = docSnap.exists() ? (docSnap.data().lista || []) : [];
+
+    const ingreso = {
+      id: Date.now().toString(),
+      insumo,
+      cantidad: cantidadNum,
+      fecha,        // YYYY-MM-DD (fecha del pedido)
+      mes,          // YYYY-MM (para agrupación)
+      fecha_registro: (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      })(),
+      notas: notas || null,
+      registrado_por: registradoPorNombre || "Admin"
+    };
+
+    lista.push(ingreso);
+    await setDoc(docRef, { lista }, { merge: true });
+
+    // Sumar al stock actual
+    await sumarStock(insumo, cantidadNum);
+
+    return ingreso;
+  } catch (error) {
+    console.error("Error al registrar ingreso de stock:", error);
+    throw error;
+  }
+}
+
+/**
+ * Obtiene el historial completo de ingresos de stock.
+ * @returns {Promise<Array>} Lista de ingresos ordenada por fecha desc.
+ */
+export async function obtenerIngresosStock() {
+  try {
+    const docRef = doc(db, CATALOGOS_COLLECTION, "ingresos_stock");
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) return [];
+    const lista = docSnap.data().lista || [];
+    // Ordenar por fecha_registro descendente
+    return lista.sort((a, b) => b.fecha_registro.localeCompare(a.fecha_registro));
+  } catch (error) {
+    console.error("Error al obtener historial de ingresos:", error);
+    throw error;
+  }
+}
+
+/**
+ * Elimina un ingreso del historial por su ID.
+ * @param {string} id - ID del ingreso a eliminar.
+ */
+export async function eliminarIngresoStock(id) {
+  try {
+    const docRef = doc(db, CATALOGOS_COLLECTION, "ingresos_stock");
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) return false;
+    const lista = (docSnap.data().lista || []).filter(i => i.id !== id);
+    await setDoc(docRef, { lista }, { merge: true });
+    return true;
+  } catch (error) {
+    console.error("Error al eliminar ingreso:", error);
     throw error;
   }
 }
