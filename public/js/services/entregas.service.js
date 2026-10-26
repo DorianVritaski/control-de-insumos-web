@@ -14,7 +14,8 @@ import {
   query,
   where,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { restarStock } from "./catalogos.service.js";
 
@@ -273,6 +274,82 @@ export async function eliminarEntrega(entregaId) {
     return true;
   } catch (error) {
     console.error("Error al eliminar entrega:", error);
+    throw error;
+  }
+}
+
+/**
+ * Registra entregas de múltiples pisos de un pabellon en una sola operación atómica (Batch Write).
+ * Aplica la misma lógica RF-03: si desglose coincide con total → REGULARIZADO, si no → POR_REGULARIZAR.
+ *
+ * @param {Object} params
+ * @param {string} params.fecha       - Fecha de registro YYYY-MM-DD
+ * @param {string} params.insumo      - Nombre del insumo
+ * @param {string} params.pabellon    - Código del pabellón
+ * @param {Object} params.encargado   - { uid, nombre, dni }
+ * @param {Array}  params.registrosPisos - [{ pisoNumero, damas, varones, discapacitado, totalPiso }]
+ * @returns {Promise<{guardados: number, ids: string[]}>}
+ */
+export async function registrarEntregaMultipiso({ fecha, insumo, pabellon, encargado, registrosPisos }) {
+  try {
+    const pisosValidos = registrosPisos.filter(p => (parseInt(p.totalPiso) || 0) > 0);
+
+    if (pisosValidos.length === 0) {
+      throw new Error("Debe ingresar al menos una cantidad en algún piso.");
+    }
+
+    const batch = writeBatch(db);
+    const entregasRef = collection(db, REGISTROS_COLECCION);
+    const ids = [];
+    let totalGlobal = 0;
+
+    pisosValidos.forEach(pisoData => {
+      const d   = parseInt(pisoData.damas)          || 0;
+      const v   = parseInt(pisoData.varones)        || 0;
+      const dc  = parseInt(pisoData.discapacitado)  || 0;
+      const sumaDesglose = d + v + dc;
+      const totalPiso    = parseInt(pisoData.totalPiso) || sumaDesglose;
+
+      // RF-03: REGULARIZADO solo si desglose > 0 y coincide con total
+      const tieneDesglose   = sumaDesglose > 0;
+      const desgloseCoincide = tieneDesglose && sumaDesglose === totalPiso;
+      const estado = desgloseCoincide ? "REGULARIZADO" : "POR_REGULARIZAR";
+
+      const newDocRef = doc(entregasRef);
+      ids.push(newDocRef.id);
+      totalGlobal += totalPiso;
+
+      batch.set(newDocRef, {
+        fecha_registro: fecha,
+        insumo,
+        pabellon,
+        piso: parseInt(pisoData.pisoNumero),
+        detalle_banos: { damas: d, varones: v, discapacitado: dc },
+        cantidad_total: totalPiso,
+        estado,
+        encargado: {
+          uid:    encargado.uid    || null,
+          nombre: encargado.nombre || encargado.nombre_completo || "",
+          dni:    encargado.dni    || ""
+        },
+        observaciones: pisoData.observaciones || null,
+        regularizado_por:    null,
+        fecha_regularizacion: null,
+        timestamp: serverTimestamp()
+      });
+    });
+
+    await batch.commit();
+
+    // Descontar del stock el total global
+    if (totalGlobal > 0) {
+      try { await restarStock(insumo, totalGlobal); }
+      catch(e) { console.warn("No se pudo actualizar el stock:", e.message); }
+    }
+
+    return { guardados: pisosValidos.length, ids };
+  } catch (error) {
+    console.error("Error al registrar entrega multipiso:", error);
     throw error;
   }
 }

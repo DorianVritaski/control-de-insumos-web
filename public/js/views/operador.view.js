@@ -2,7 +2,7 @@
 // Formulario de Registro de Entregas + Historial + Edición
 // Según la especificación Spec_Driven_Development.md - Sección 6.2, RF-02
 
-import { registrarEntrega, obtenerEntregasDelDia, obtenerEntregasDelOperador, actualizarEntrega } from "../services/entregas.service.js";
+import { registrarEntrega, obtenerEntregasDelDia, obtenerEntregasDelOperador, actualizarEntrega, registrarEntregaMultipiso } from "../services/entregas.service.js";
 import { getPabellones, getInsumos, getStock } from "../services/catalogos.service.js";
 import { isAuthenticated, getCurrentUser } from "../services/auth.service.js";
 
@@ -21,9 +21,10 @@ export function operadorView() {
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
       <div class="border-b border-slate-200 px-6 pt-4">
         <nav class="flex gap-1 -mb-px">
-          <button data-tab="registro" class="op-tab-btn active px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-teal-600 text-teal-700 bg-teal-50 transition-all whitespace-nowrap">📦 Registrar Entrega</button>
-          <button data-tab="historial" class="op-tab-btn px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all whitespace-nowrap">📋 Mis Registros</button>
-          <button data-tab="stock" class="op-tab-btn px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all whitespace-nowrap">📊 Stock Disponible</button>
+          <button data-tab="registro"   class="op-tab-btn active px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-teal-600 text-teal-700 bg-teal-50 transition-all whitespace-nowrap">📦 Registrar Entrega</button>
+          <button data-tab="multipiso"  class="op-tab-btn px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all whitespace-nowrap">🏢 Registro Multipiso</button>
+          <button data-tab="historial"  class="op-tab-btn px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all whitespace-nowrap">📋 Mis Registros</button>
+          <button data-tab="stock"      class="op-tab-btn px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all whitespace-nowrap">📊 Stock Disponible</button>
         </nav>
       </div>
 
@@ -214,6 +215,69 @@ export function operadorView() {
           <div class="col-span-full text-center text-slate-400 py-10">Cargando stock...</div>
         </div>
       </div>
+
+      <!-- ===== TAB MULTIPISO ===== -->
+      <div class="op-tab-panel hidden" id="op-tab-multipiso">
+        <!-- Cabecera selectores -->
+        <div class="p-6 border-b border-slate-100">
+          <div class="flex items-center gap-2 mb-4">
+            <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white text-lg" style="background:linear-gradient(135deg,#7c3aed,#4f46e5)">🏢</div>
+            <div>
+              <h3 class="font-bold text-slate-800">Registro Multipiso por Pabellón</h3>
+              <p class="text-xs text-slate-400">Registra la entrega de varios pisos en una sola acción.</p>
+            </div>
+          </div>
+          <div id="mp-alert"></div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase">Fecha *</label>
+              <input type="date" id="mp-fecha" class="form-input" required>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase">Insumo *</label>
+              <select id="mp-insumo" class="form-input" required>
+                <option value="">Seleccione insumo...</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase">Pabellón *</label>
+              <select id="mp-pabellon" class="form-input" required>
+                <option value="">Seleccione pabellón...</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Grilla de pisos (generada dinámicamente) -->
+        <div class="p-6 pb-32">
+          <div id="mp-pisos-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div class="col-span-full flex flex-col items-center justify-center py-16 text-slate-300">
+              <svg class="w-16 h-16 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+              <p class="font-semibold text-slate-400">Selecciona un pabellón para ver los pisos</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Barra inferior fija -->
+        <div id="mp-bar" class="hidden fixed bottom-0 left-0 right-0 z-40 border-t border-indigo-200 px-6 py-4" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);">
+          <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+            <div class="flex items-center gap-6">
+              <div class="text-center">
+                <p class="text-indigo-200 text-xs font-semibold uppercase">Pisos con datos</p>
+                <p class="text-white text-2xl font-extrabold" id="mp-pisos-count">0</p>
+              </div>
+              <div class="w-px h-10 bg-indigo-400"></div>
+              <div class="text-center">
+                <p class="text-indigo-200 text-xs font-semibold uppercase">Total Acumulado</p>
+                <p class="text-white text-2xl font-extrabold font-mono" id="mp-total-global">0</p>
+              </div>
+            </div>
+            <button id="btn-mp-registrar" class="px-8 py-3 rounded-xl font-bold text-indigo-700 bg-white hover:bg-indigo-50 active:scale-95 transition-all text-sm shadow-lg">
+              ✓ Registrar <span id="mp-btn-label">0</span> Pisos
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Modal Edición -->
@@ -304,6 +368,20 @@ export function operadorView() {
         const editPabellon = container.querySelector('#edit-pabellon');
         editInsumo.innerHTML = insumosData.map(i => `<option value="${i}">${i.replace(/_/g,' ')}</option>`).join('');
         editPabellon.innerHTML = pabellanesData.map(p => `<option value="${p.codigo}">${p.nombre}</option>`).join('');
+
+        // Poblar selectores del módulo Multipiso
+        const mpIns = container.querySelector('#mp-insumo');
+        const mpPab = container.querySelector('#mp-pabellon');
+        if (mpIns && mpPab) {
+          mpIns.innerHTML = '<option value="">Seleccione insumo...</option>';
+          insumosData.forEach(i => {
+            const o = document.createElement('option'); o.value = i; o.textContent = i.replace(/_/g,' '); mpIns.appendChild(o);
+          });
+          mpPab.innerHTML = '<option value="">Seleccione pabellón...</option>';
+          pabellanesData.forEach(p => {
+            const o = document.createElement('option'); o.value = p.codigo; o.dataset.pisos = p.max_pisos; o.textContent = `${p.nombre} (${p.max_pisos} pisos)`; mpPab.appendChild(o);
+          });
+        }
       } catch (e) {
         alertContainer.innerHTML = `<div class="alert alert-error">Error al cargar catálogos: ${e.message}</div>`;
       }
@@ -458,6 +536,253 @@ export function operadorView() {
       if (btn.dataset.tab === 'stock') {
         btn.addEventListener('click', cargarStock);
       }
+    });
+
+    // ====== MÓDULO MULTIPISO ======
+    const mpFecha    = container.querySelector('#mp-fecha');
+    const mpInsumo   = container.querySelector('#mp-insumo');
+    const mpPabellon = container.querySelector('#mp-pabellon');
+    const mpGrid     = container.querySelector('#mp-pisos-grid');
+    const mpBar      = container.querySelector('#mp-bar');
+    const mpAlert    = container.querySelector('#mp-alert');
+    const mpTotalEl  = container.querySelector('#mp-total-global');
+    const mpCountEl  = container.querySelector('#mp-pisos-count');
+    const mpBtnLabel = container.querySelector('#mp-btn-label');
+
+    // Establecer fecha por defecto = hoy
+    const hoyStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
+    mpFecha.value = hoyStr;
+
+    // Los selectores ya fueron poblados por cargarCatalogos()
+
+    // ---- Recalcular totales de la barra ----
+    function recalcularTotalesMp() {
+      let totalAcum = 0;
+      let pisosConDatos = 0;
+      container.querySelectorAll('.mp-piso-card').forEach(card => {
+        const total = parseInt(card.querySelector('.mp-total-input').value) || 0;
+        if (total > 0) { totalAcum += total; pisosConDatos++; }
+      });
+      mpTotalEl.textContent  = totalAcum.toLocaleString();
+      mpCountEl.textContent  = pisosConDatos;
+      mpBtnLabel.textContent = pisosConDatos;
+      // Mostrar/ocultar barra
+      if (pisosConDatos > 0) mpBar.classList.remove('hidden');
+      else mpBar.classList.add('hidden');
+    }
+
+    // ---- Calcular estado visual por tarjeta (RF-03) ----
+    function calcularEstadoCard(card) {
+      const d  = parseInt(card.querySelector('.mp-damas').value)         || 0;
+      const v  = parseInt(card.querySelector('.mp-varones').value)       || 0;
+      const dc = parseInt(card.querySelector('.mp-discap').value)        || 0;
+      const total = parseInt(card.querySelector('.mp-total-input').value) || 0;
+      const suma = d + v + dc;
+
+      const badge   = card.querySelector('.mp-estado-badge');
+      const alerta  = card.querySelector('.mp-alerta-desglose');
+
+      // Autocompletar total si se modificó el desglose y el total estaba en 0
+      const totalInput = card.querySelector('.mp-total-input');
+      if (suma > 0 && !totalInput.dataset.editado) {
+        totalInput.value = suma;
+      }
+
+      const totalActual = parseInt(totalInput.value) || 0;
+      const sumaActual  = d + v + dc;
+
+      if (totalActual === 0) {
+        badge.className   = 'mp-estado-badge text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500';
+        badge.textContent = '— Sin datos';
+        alerta.className  = 'mp-alerta-desglose text-xs mt-2 hidden';
+        alerta.textContent = '';
+        return;
+      }
+
+      const tieneDesglose    = sumaActual > 0;
+      const desgloseCoincide = tieneDesglose && sumaActual === totalActual;
+
+      if (desgloseCoincide) {
+        badge.className   = 'mp-estado-badge text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700';
+        badge.textContent = '✓ Regularizado';
+        alerta.className  = 'mp-alerta-desglose text-xs mt-2 text-emerald-600 font-medium';
+        alerta.textContent = `✓ Desglose coincide (${sumaActual} u.)`;
+      } else if (tieneDesglose) {
+        badge.className   = 'mp-estado-badge text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700';
+        badge.textContent = '⚠ Por Regularizar';
+        alerta.className  = 'mp-alerta-desglose text-xs mt-2 text-amber-600 font-medium';
+        alerta.textContent = `⚠ Suma desglose (${sumaActual}) ≠ Total (${totalActual})`;
+      } else {
+        badge.className   = 'mp-estado-badge text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700';
+        badge.textContent = '⚠ Por Regularizar';
+        alerta.className  = 'mp-alerta-desglose text-xs mt-2 text-amber-600 font-medium';
+        alerta.textContent = '⚠ Sin distribución → se guardará como Por Regularizar';
+      }
+      recalcularTotalesMp();
+    }
+
+    // ---- Generar grilla de pisos ----
+    function generarPisosGrid(maxPisos) {
+      if (!maxPisos || maxPisos < 1) {
+        mpGrid.innerHTML = '<div class="col-span-full text-center text-slate-400 py-10">Pabellón sin pisos configurados.</div>';
+        mpBar.classList.add('hidden');
+        return;
+      }
+      mpGrid.innerHTML = '';
+      for (let p = 1; p <= maxPisos; p++) {
+        const card = document.createElement('div');
+        card.className = 'mp-piso-card bg-white rounded-2xl border-2 border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all overflow-hidden';
+        card.dataset.piso = p;
+        card.innerHTML = `
+          <div class="px-4 py-3 flex items-center justify-between border-b border-slate-100" style="background:linear-gradient(135deg,#ede9fe,#e0e7ff)">
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white text-xs font-extrabold flex items-center justify-center">${p}</span>
+              <span class="font-bold text-indigo-800 text-sm">Piso ${p}</span>
+            </div>
+            <span class="mp-estado-badge text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">— Sin datos</span>
+          </div>
+          <div class="p-4 space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Total *</label>
+              <input type="number" class="mp-total-input form-input text-center font-extrabold text-lg text-indigo-700" min="0" value="0" placeholder="0" data-editado="">
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="block text-xs text-slate-400 text-center mb-1">👩 Damas</label>
+                <input type="number" class="mp-damas form-input text-center text-sm" min="0" value="0">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 text-center mb-1">👨 Varones</label>
+                <input type="number" class="mp-varones form-input text-center text-sm" min="0" value="0">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 text-center mb-1">♿ Discap.</label>
+                <input type="number" class="mp-discap form-input text-center text-sm" min="0" value="0">
+              </div>
+            </div>
+            <p class="mp-alerta-desglose text-xs mt-1 hidden"></p>
+          </div>`;
+
+        // Listeners
+        const totalInput = card.querySelector('.mp-total-input');
+        totalInput.addEventListener('input', () => {
+          totalInput.dataset.editado = 'true';
+          calcularEstadoCard(card);
+          recalcularTotalesMp();
+        });
+        totalInput.addEventListener('focus', () => totalInput.select());
+
+        ['mp-damas','mp-varones','mp-discap'].forEach(cls => {
+          card.querySelector('.' + cls).addEventListener('input', () => calcularEstadoCard(card));
+        });
+
+        // Clic en la cabecera → focus al total
+        card.querySelector('.px-4.py-3').addEventListener('click', () => totalInput.focus());
+
+        mpGrid.appendChild(card);
+      }
+      recalcularTotalesMp();
+    }
+
+    // Listener cambio de pabellón
+    mpPabellon.addEventListener('change', () => {
+      const opt = mpPabellon.selectedOptions[0];
+      const pisos = opt ? parseInt(opt.dataset.pisos) : 0;
+      if (pisos > 0) {
+        generarPisosGrid(pisos);
+      } else {
+        mpGrid.innerHTML = `<div class="col-span-full flex flex-col items-center justify-center py-16 text-slate-300">
+          <svg class="w-16 h-16 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+          <p class="font-semibold text-slate-400">Selecciona un pabellón para ver los pisos</p></div>`;
+        mpBar.classList.add('hidden');
+      }
+    });
+
+    // ---- Botón Registrar Multipiso ----
+    container.querySelector('#btn-mp-registrar').addEventListener('click', async () => {
+      const fecha    = mpFecha.value;
+      const insumo   = mpInsumo.value;
+      const pabellon = mpPabellon.value;
+
+      mpAlert.innerHTML = '';
+      const errores = [];
+      if (!fecha)    errores.push('Selecciona una fecha.');
+      if (!insumo)   errores.push('Selecciona un insumo.');
+      if (!pabellon) errores.push('Selecciona un pabellón.');
+
+      if (errores.length) {
+        mpAlert.innerHTML = `<div class="alert alert-error mb-4">${errores.map(x => '• ' + x).join('<br>')}</div>`;
+        return;
+      }
+
+      // Recolectar datos de cada tarjeta
+      const registrosPisos = [];
+      container.querySelectorAll('.mp-piso-card').forEach(card => {
+        const pisoNumero    = parseInt(card.dataset.piso);
+        const totalPiso     = parseInt(card.querySelector('.mp-total-input').value) || 0;
+        const damas         = parseInt(card.querySelector('.mp-damas').value)        || 0;
+        const varones       = parseInt(card.querySelector('.mp-varones').value)      || 0;
+        const discapacitado = parseInt(card.querySelector('.mp-discap').value)       || 0;
+        registrosPisos.push({ pisoNumero, totalPiso, damas, varones, discapacitado });
+      });
+
+      const pisosValidos = registrosPisos.filter(p => p.totalPiso > 0);
+      if (pisosValidos.length === 0) {
+        mpAlert.innerHTML = '<div class="alert alert-error mb-4">⚠️ Ingresa al menos una cantidad en algún piso.</div>';
+        return;
+      }
+
+      const btn = container.querySelector('#btn-mp-registrar');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="animate-spin inline-block mr-2">⏳</span> Registrando...';
+
+      try {
+        const encargado = {
+          uid:    currentUser?.uid    || null,
+          nombre: currentUser?.nombre_completo || 'Operador',
+          dni:    currentUser?.dni    || ''
+        };
+
+        const result = await registrarEntregaMultipiso({ fecha, insumo, pabellon, encargado, registrosPisos });
+
+        mpAlert.innerHTML = `<div class="alert alert-success mb-4">
+          ✅ <strong>${result.guardados} piso(s)</strong> registrados correctamente en modo batch.
+          El stock ha sido actualizado.
+        </div>`;
+        setTimeout(() => { mpAlert.innerHTML = ''; }, 7000);
+
+        // Resetear tarjetas
+        container.querySelectorAll('.mp-piso-card').forEach(card => {
+          card.querySelector('.mp-total-input').value = '0';
+          card.querySelector('.mp-total-input').dataset.editado = '';
+          card.querySelector('.mp-damas').value   = '0';
+          card.querySelector('.mp-varones').value = '0';
+          card.querySelector('.mp-discap').value  = '0';
+          calcularEstadoCard(card);
+        });
+        recalcularTotalesMp();
+
+        // Refrescar stock sidebar
+        await cargarStock();
+        if (currentUser) await renderHistorialRapido(currentUser.uid);
+
+      } catch(err) {
+        mpAlert.innerHTML = `<div class="alert alert-error mb-4">❌ ${err.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '✓ Registrar <span id="mp-btn-label">' + (pisosValidos.length) + '</span> Pisos';
+      }
+    });
+
+    // Ocultar barra multipiso cuando no estamos en ese tab
+    container.querySelectorAll('.op-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.tab !== 'multipiso') {
+          mpBar.classList.add('hidden');
+        } else {
+          recalcularTotalesMp();
+        }
+      });
     });
 
     // ====== REGISTRAR ENTREGA ======
