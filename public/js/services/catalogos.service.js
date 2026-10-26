@@ -48,13 +48,75 @@ export async function getInsumos() {
 }
 
 /**
+ * Obtiene la configuración completa de insumos desactivados por módulo.
+ * Estructura: { desactivados_registro: [], desactivados_multipiso: [] }
+ * @returns {Promise<{desactivados_registro: string[], desactivados_multipiso: string[]}>}
+ */
+export async function getInsumosConfig() {
+  try {
+    const docRef = doc(db, CATALOGOS_COLLECTION, "insumos_config");
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return { desactivados_registro: [], desactivados_multipiso: [] };
+    const data = snap.data();
+    // Migrar campo legacy 'desactivados' si existe
+    const legacy = data.desactivados || [];
+    return {
+      desactivados_registro: data.desactivados_registro || legacy,
+      desactivados_multipiso: data.desactivados_multipiso || []
+    };
+  } catch (error) {
+    console.error("Error al obtener config de insumos:", error);
+    return { desactivados_registro: [], desactivados_multipiso: [] };
+  }
+}
+
+/**
+ * Obtiene los insumos desactivados para un módulo específico.
+ * @param {'registro'|'multipiso'} modulo
+ * @returns {Promise<string[]>}
+ */
+export async function getInsumosDesactivados(modulo = 'registro') {
+  const cfg = await getInsumosConfig();
+  return modulo === 'multipiso' ? cfg.desactivados_multipiso : cfg.desactivados_registro;
+}
+
+/**
+ * Activa o desactiva un insumo en un módulo específico.
+ * @param {string} nombre - Nombre del insumo.
+ * @param {boolean} activo - true = activar, false = desactivar.
+ * @param {'registro'|'multipiso'} modulo - Módulo objetivo.
+ */
+export async function toggleInsumoActivo(nombre, activo, modulo = 'registro') {
+  try {
+    const cfg = await getInsumosConfig();
+    const campo = modulo === 'multipiso' ? 'desactivados_multipiso' : 'desactivados_registro';
+    const lista = cfg[campo] || [];
+    let nuevaLista;
+    if (activo) {
+      nuevaLista = lista.filter(d => d !== nombre);
+    } else {
+      nuevaLista = lista.includes(nombre) ? lista : [...lista, nombre];
+    }
+    const docRef = doc(db, CATALOGOS_COLLECTION, "insumos_config");
+    await setDoc(docRef, { [campo]: nuevaLista }, { merge: true });
+    // Retornar la config actualizada
+    return { ...cfg, [campo]: nuevaLista };
+  } catch (error) {
+    console.error("Error al toggle insumo:", error);
+    throw error;
+  }
+}
+
+/**
  * Obtiene todos los catálogos en una sola llamada.
- * @returns {Promise<Object>} Objeto con pabellones e insumos.
+ * @returns {Promise<Object>} Objeto con pabellones, insumos e insumosConfig.
  */
 export async function getCatalogosCompletos() {
   try {
-    const [pabellones, insumos] = await Promise.all([getPabellones(), getInsumos()]);
-    return { pabellones, insumos };
+    const [pabellones, insumos, insumosConfig] = await Promise.all([
+      getPabellones(), getInsumos(), getInsumosConfig()
+    ]);
+    return { pabellones, insumos, insumosDesactivados: insumosConfig.desactivados_registro, insumosConfig };
   } catch (error) {
     console.error("Error al obtener catálogos completos:", error);
     throw error;
@@ -305,6 +367,93 @@ export async function eliminarIngresoStock(id) {
     return true;
   } catch (error) {
     console.error("Error al eliminar ingreso:", error);
+    throw error;
+  }
+}
+
+// ============================================================
+// CONFIGURACIÓN INSUMO AGUA
+// catalogos/config_agua → { max_bidones: N, areas_solicitantes: [] }
+// ============================================================
+
+/**
+ * Obtiene la configuración del insumo Agua.
+ * @returns {Promise<{max_bidones: number, areas_solicitantes: string[]}>}
+ */
+export async function getConfigAgua() {
+  try {
+    const docRef = doc(db, CATALOGOS_COLLECTION, "config_agua");
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return { max_bidones: 10, areas_solicitantes: [] };
+    return { max_bidones: 10, areas_solicitantes: [], ...snap.data() };
+  } catch (error) {
+    console.error("Error al obtener config agua:", error);
+    throw error;
+  }
+}
+
+/**
+ * Actualiza la cantidad máxima de bidones por entrega.
+ * @param {number} maxBidones
+ */
+export async function actualizarMaxBidones(maxBidones) {
+  try {
+    const docRef = doc(db, CATALOGOS_COLLECTION, "config_agua");
+    await setDoc(docRef, { max_bidones: parseInt(maxBidones) || 10 }, { merge: true });
+  } catch (error) {
+    console.error("Error al actualizar max bidones:", error);
+    throw error;
+  }
+}
+
+/**
+ * Obtiene la lista de áreas solicitantes.
+ * @returns {Promise<string[]>}
+ */
+export async function getAreasSolicitantes() {
+  try {
+    const cfg = await getConfigAgua();
+    return cfg.areas_solicitantes || [];
+  } catch (error) {
+    console.error("Error al obtener áreas solicitantes:", error);
+    throw error;
+  }
+}
+
+/**
+ * Agrega un área solicitante nueva.
+ * @param {string} nombre
+ */
+export async function agregarAreaSolicitante(nombre) {
+  try {
+    const cfg = await getConfigAgua();
+    const lista = cfg.areas_solicitantes || [];
+    const nombreUpper = nombre.trim().toUpperCase();
+    if (lista.includes(nombreUpper)) throw new Error(`El área "${nombreUpper}" ya existe.`);
+    lista.push(nombreUpper);
+    lista.sort();
+    const docRef = doc(db, CATALOGOS_COLLECTION, "config_agua");
+    await setDoc(docRef, { areas_solicitantes: lista }, { merge: true });
+    return lista;
+  } catch (error) {
+    console.error("Error al agregar área solicitante:", error);
+    throw error;
+  }
+}
+
+/**
+ * Elimina un área solicitante.
+ * @param {string} nombre
+ */
+export async function eliminarAreaSolicitante(nombre) {
+  try {
+    const cfg = await getConfigAgua();
+    const lista = (cfg.areas_solicitantes || []).filter(a => a !== nombre);
+    const docRef = doc(db, CATALOGOS_COLLECTION, "config_agua");
+    await setDoc(docRef, { areas_solicitantes: lista }, { merge: true });
+    return lista;
+  } catch (error) {
+    console.error("Error al eliminar área solicitante:", error);
     throw error;
   }
 }

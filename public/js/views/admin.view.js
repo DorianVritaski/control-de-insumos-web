@@ -8,7 +8,9 @@ import {
   agregarPabellon, actualizarPabellon, eliminarPabellon,
   agregarInsumo, eliminarInsumo,
   getStock, actualizarStock,
-  registrarIngresoStock, obtenerIngresosStock, eliminarIngresoStock
+  registrarIngresoStock, obtenerIngresosStock, eliminarIngresoStock,
+  getConfigAgua, actualizarMaxBidones, agregarAreaSolicitante, eliminarAreaSolicitante,
+  toggleInsumoActivo, getInsumosConfig
 } from "../services/catalogos.service.js";
 import { obtenerTodosLosUsuarios, registrarUsuario, cambiarEstadoUsuario } from "../services/users.service.js";
 import { getCurrentUser } from "../services/auth.service.js";
@@ -138,6 +140,42 @@ export function adminView() {
               </div>
             </div>
           </div>
+
+          <!-- Config Agua (span 2 cols) -->
+          <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between" style="background:linear-gradient(135deg,#eff6ff,#dbeafe);">
+              <div class="flex items-center gap-2">
+                <span class="text-xl">💧</span>
+                <h3 class="font-bold text-slate-800 text-base">Configuración Insumo Agua</h3>
+              </div>
+            </div>
+            <div class="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+              <!-- Max Bidones -->
+              <div>
+                <p class="text-xs font-bold text-slate-500 uppercase mb-3">🧔 Máximo de Bidones por Entrega</p>
+                <div class="flex items-center gap-3">
+                  <input type="number" id="agua-max-bidones" class="form-input w-28 text-center font-bold text-lg" min="1" max="50" value="10">
+                  <button id="btn-guardar-max-bidones" class="btn btn-primary text-sm">💾 Guardar</button>
+                </div>
+                <p class="text-xs text-slate-400 mt-2">Define cuántos bidones como máximo se podrán seleccionar en el formulario de entrega de Agua.</p>
+              </div>
+
+              <!-- Áreas Solicitantes -->
+              <div>
+                <p class="text-xs font-bold text-slate-500 uppercase mb-3">🏢 Áreas Solicitantes</p>
+                <form id="form-add-area" class="flex gap-2 mb-3">
+                  <input type="text" id="area-nombre" class="form-input flex-1 text-sm" placeholder="Ej: ENFERMERÍA" required>
+                  <button type="submit" class="btn btn-primary text-sm whitespace-nowrap">+ Agregar</button>
+                </form>
+                <div id="lista-areas" class="space-y-2 max-h-52 overflow-y-auto">
+                  <p class="text-xs text-slate-400 text-center py-3">Cargando...</p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
 
           <!-- Stock + Ingresos -->
           <div class="lg:col-span-3 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -338,15 +376,15 @@ async function initAdminView(container) {
   const tabPanels = container.querySelectorAll('.tab-panel');
   tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      tabBtns.forEach(b => { b.classList.remove('active','border-teal-600','text-teal-700','bg-teal-50'); b.classList.add('border-transparent','text-slate-500'); });
+      tabBtns.forEach(b => { b.classList.remove('active', 'border-teal-600', 'text-teal-700', 'bg-teal-50'); b.classList.add('border-transparent', 'text-slate-500'); });
       tabPanels.forEach(p => p.classList.add('hidden'));
-      btn.classList.add('active','border-teal-600','text-teal-700','bg-teal-50');
-      btn.classList.remove('border-transparent','text-slate-500');
+      btn.classList.add('active', 'border-teal-600', 'text-teal-700', 'bg-teal-50');
+      btn.classList.remove('border-transparent', 'text-slate-500');
       container.querySelector('#tab-' + btn.dataset.tab)?.classList.remove('hidden');
     });
   });
 
-  let catalogos = { pabellones: [], insumos: [] };
+  let catalogos = { pabellones: [], insumos: [], insumosDesactivados: [], insumosConfig: { desactivados_registro: [], desactivados_multipiso: [] } };
   let stockData = {};
   let entregasExport = [];
 
@@ -358,16 +396,16 @@ async function initAdminView(container) {
   }
 
   function sincFiltros() {
-    ['#filtro-pabellon','#exp-pabellon'].forEach(sel => {
+    ['#filtro-pabellon', '#exp-pabellon'].forEach(sel => {
       const s = container.querySelector(sel); if (!s) return;
       const v = s.value; s.innerHTML = '<option value="">Todos</option>';
       catalogos.pabellones.forEach(p => { const o = document.createElement('option'); o.value = p.codigo; o.textContent = p.nombre; s.appendChild(o); });
       s.value = v;
     });
-    ['#filtro-insumo','#exp-insumo'].forEach(sel => {
+    ['#filtro-insumo', '#exp-insumo'].forEach(sel => {
       const s = container.querySelector(sel); if (!s) return;
       const v = s.value; s.innerHTML = '<option value="">Todos</option>';
-      catalogos.insumos.forEach(i => { const o = document.createElement('option'); o.value = i; o.textContent = i.replace(/_/g,' '); s.appendChild(o); });
+      catalogos.insumos.forEach(i => { const o = document.createElement('option'); o.value = i; o.textContent = i.replace(/_/g, ' '); s.appendChild(o); });
       s.value = v;
     });
   }
@@ -415,8 +453,8 @@ async function initAdminView(container) {
     container.querySelectorAll('.btn-del-pab').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (!confirm(`¿Eliminar pabellón "${btn.dataset.codigo}"?`)) return;
-        try { await eliminarPabellon(btn.dataset.codigo); catalogos.pabellones = catalogos.pabellones.filter(p => p.codigo !== btn.dataset.codigo); renderPabellones(); sincFiltros(); showAlert('#alert-catalogos','✅ Pabellón eliminado.'); }
-        catch(e) { showAlert('#alert-catalogos','❌ ' + e.message,'error'); }
+        try { await eliminarPabellon(btn.dataset.codigo); catalogos.pabellones = catalogos.pabellones.filter(p => p.codigo !== btn.dataset.codigo); renderPabellones(); sincFiltros(); showAlert('#alert-catalogos', '✅ Pabellón eliminado.'); }
+        catch (e) { showAlert('#alert-catalogos', '❌ ' + e.message, 'error'); }
       });
     });
   }
@@ -425,19 +463,19 @@ async function initAdminView(container) {
   container.querySelector('#btn-confirmar-edit-pabellon').addEventListener('click', async () => {
     const codigoOrig = container.querySelector('#edit-pabellon-codigo-orig').value;
     const nombre = container.querySelector('#edit-pabellon-nombre').value.trim();
-    const pisos  = parseInt(container.querySelector('#edit-pabellon-pisos').value);
-    if (!nombre || !pisos) { showAlert('#alert-modal-pabellon','⚠️ Completa todos los campos.','error'); return; }
+    const pisos = parseInt(container.querySelector('#edit-pabellon-pisos').value);
+    if (!nombre || !pisos) { showAlert('#alert-modal-pabellon', '⚠️ Completa todos los campos.', 'error'); return; }
     const btn = container.querySelector('#btn-confirmar-edit-pabellon');
     btn.disabled = true; btn.textContent = 'Guardando...';
     try {
       await actualizarPabellon(codigoOrig, nombre, pisos);
       const idx = catalogos.pabellones.findIndex(p => p.codigo === codigoOrig);
       if (idx !== -1) catalogos.pabellones[idx] = { codigo: codigoOrig, nombre, max_pisos: pisos };
-      catalogos.pabellones.sort((a,b) => a.nombre.localeCompare(b.nombre));
+      catalogos.pabellones.sort((a, b) => a.nombre.localeCompare(b.nombre));
       renderPabellones(); sincFiltros();
       cerrarModal('#modal-edit-pabellon');
-      showAlert('#alert-catalogos',`✅ Pabellón "${nombre}" actualizado.`);
-    } catch(e) { container.querySelector('#alert-modal-pabellon').innerHTML = `<div class="alert alert-error mb-3">❌ ${e.message}</div>`; }
+      showAlert('#alert-catalogos', `✅ Pabellón "${nombre}" actualizado.`);
+    } catch (e) { container.querySelector('#alert-modal-pabellon').innerHTML = `<div class="alert alert-error mb-3">❌ ${e.message}</div>`; }
     finally { btn.disabled = false; btn.textContent = '✓ Guardar'; }
   });
   container.querySelector('#btn-cancelar-edit-pabellon').addEventListener('click', () => cerrarModal('#modal-edit-pabellon'));
@@ -446,13 +484,30 @@ async function initAdminView(container) {
   function renderInsumos() {
     const ul = container.querySelector('#lista-insumos');
     if (!catalogos.insumos.length) { ul.innerHTML = '<p class="text-sm text-slate-400 text-center py-4">Sin insumos.</p>'; return; }
-    ul.innerHTML = catalogos.insumos.map(i => `
-      <div class="flex items-center justify-between gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200 group hover:border-violet-300 hover:bg-violet-50 transition-all">
+    const cfg = catalogos.insumosConfig || { desactivados_registro: [], desactivados_multipiso: [] };
+    ul.innerHTML = catalogos.insumos.map(i => {
+      const enReg   = !cfg.desactivados_registro.includes(i);
+      const enMulti = !cfg.desactivados_multipiso.includes(i);
+      return `
+      <div class="flex items-center justify-between gap-2 p-3 rounded-lg border group transition-all ${(!enReg && !enMulti) ? 'bg-slate-100 border-slate-300 opacity-60' : 'bg-slate-50 border-slate-200 hover:border-violet-300 hover:bg-violet-50'}">
         <div class="flex items-center gap-3 min-w-0">
-          <span class="w-8 h-8 shrink-0 rounded-lg text-xs font-bold text-white flex items-center justify-center" style="background:linear-gradient(135deg,#7c3aed,#6d28d9)">🧴</span>
-          <p class="font-semibold text-slate-800 text-sm truncate" title="${i}">${i.replace(/_/g,' ')}</p>
+          <span class="w-8 h-8 shrink-0 rounded-lg text-xs font-bold text-white flex items-center justify-center" style="background:${(enReg || enMulti) ? 'linear-gradient(135deg,#7c3aed,#6d28d9)' : '#94a3b8'}">🧴</span>
+          <div class="min-w-0">
+            <p class="font-semibold text-slate-800 text-sm truncate" title="${i}">${i.replace(/_/g, ' ')}</p>
+            <div class="flex gap-2 mt-0.5">
+              <span class="inline-flex items-center text-xs font-semibold ${enReg ? 'text-emerald-600' : 'text-slate-400'}" title="Registrar Entrega">${enReg ? '● Reg.' : '○ Reg.'}</span>
+              <span class="text-slate-300 text-xs">|</span>
+              <span class="inline-flex items-center text-xs font-semibold ${enMulti ? 'text-blue-600' : 'text-slate-400'}" title="Multipiso">${enMulti ? '● Multi.' : '○ Multi.'}</span>
+            </div>
+          </div>
         </div>
-        <div class="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-all">
+        <div class="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-all items-center">
+          <button class="btn-toggle-ins text-xs px-2 py-1 rounded-lg font-semibold transition-colors border ${enReg ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'}" data-nombre="${i}" data-activo="${enReg}" data-modulo="registro" title="${enReg ? 'Desactivar en Registro' : 'Activar en Registro'}">
+            ${enReg ? '⏸ Reg.' : '▶ Reg.'}
+          </button>
+          <button class="btn-toggle-ins text-xs px-2 py-1 rounded-lg font-semibold transition-colors border ${enMulti ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'}" data-nombre="${i}" data-activo="${enMulti}" data-modulo="multipiso" title="${enMulti ? 'Desactivar en Multipiso' : 'Activar en Multipiso'}">
+            ${enMulti ? '⏸ Multi.' : '▶ Multi.'}
+          </button>
           <button class="btn-edit-ins p-1.5 rounded-lg text-violet-600 hover:bg-violet-100 transition-colors" data-nombre="${i}" title="Editar">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
           </button>
@@ -460,7 +515,27 @@ async function initAdminView(container) {
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
           </button>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
+
+    // Toggle activo/inactivo por módulo
+    container.querySelectorAll('.btn-toggle-ins').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const nombre   = btn.dataset.nombre;
+        const modulo   = btn.dataset.modulo; // 'registro' | 'multipiso'
+        const nuevaActivo = btn.dataset.activo !== 'true';
+        btn.disabled = true; btn.textContent = '...';
+        try {
+          const nuevaCfg = await toggleInsumoActivo(nombre, nuevaActivo, modulo);
+          catalogos.insumosConfig = nuevaCfg;
+          catalogos.insumosDesactivados = nuevaCfg.desactivados_registro;
+          renderInsumos();
+          const moduloLabel = modulo === 'multipiso' ? 'Registro Multipiso' : 'Registrar Entrega';
+          showAlert('#alert-catalogos', `✅ "${nombre.replace(/_/g, ' ')}" ${nuevaActivo ? 'activado' : 'desactivado'} en ${moduloLabel}.`);
+        } catch (e) { showAlert('#alert-catalogos', '❌ ' + e.message, 'error'); }
+        finally { btn.disabled = false; }
+      });
+    });
 
     // Editar insumo
     container.querySelectorAll('.btn-edit-ins').forEach(btn => {
@@ -476,8 +551,8 @@ async function initAdminView(container) {
     container.querySelectorAll('.btn-del-ins').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (!confirm(`¿Eliminar insumo "${btn.dataset.nombre}"?`)) return;
-        try { await eliminarInsumo(btn.dataset.nombre); catalogos.insumos = catalogos.insumos.filter(i => i !== btn.dataset.nombre); renderInsumos(); renderStock(); sincFiltros(); showAlert('#alert-catalogos','✅ Insumo eliminado.'); }
-        catch(e) { showAlert('#alert-catalogos','❌ ' + e.message,'error'); }
+        try { await eliminarInsumo(btn.dataset.nombre); catalogos.insumos = catalogos.insumos.filter(i => i !== btn.dataset.nombre); renderInsumos(); renderStock(); sincFiltros(); showAlert('#alert-catalogos', '✅ Insumo eliminado.'); }
+        catch (e) { showAlert('#alert-catalogos', '❌ ' + e.message, 'error'); }
       });
     });
   }
@@ -485,7 +560,7 @@ async function initAdminView(container) {
   // Confirmar edición insumo (rename: actualizar lista + stock key)
   container.querySelector('#btn-confirmar-edit-insumo').addEventListener('click', async () => {
     const orig = container.querySelector('#edit-insumo-orig').value;
-    const nuevo = container.querySelector('#edit-insumo-nombre').value.trim().toUpperCase().replace(/ /g,'_');
+    const nuevo = container.querySelector('#edit-insumo-nombre').value.trim().toUpperCase().replace(/ /g, '_');
     if (!nuevo) { container.querySelector('#alert-modal-insumo').innerHTML = `<div class="alert alert-error mb-3">⚠️ Ingresa un nombre.</div>`; return; }
     if (nuevo !== orig && catalogos.insumos.includes(nuevo)) { container.querySelector('#alert-modal-insumo').innerHTML = `<div class="alert alert-error mb-3">❌ Ya existe un insumo con ese nombre.</div>`; return; }
     const btn = container.querySelector('#btn-confirmar-edit-insumo');
@@ -507,8 +582,8 @@ async function initAdminView(container) {
       catalogos.insumos.sort();
       renderInsumos(); renderStock(); sincFiltros();
       cerrarModal('#modal-edit-insumo');
-      showAlert('#alert-catalogos',`✅ Insumo renombrado a "${nuevo}".`);
-    } catch(e) { container.querySelector('#alert-modal-insumo').innerHTML = `<div class="alert alert-error mb-3">❌ ${e.message}</div>`; }
+      showAlert('#alert-catalogos', `✅ Insumo renombrado a "${nuevo}".`);
+    } catch (e) { container.querySelector('#alert-modal-insumo').innerHTML = `<div class="alert alert-error mb-3">❌ ${e.message}</div>`; }
     finally { btn.disabled = false; btn.textContent = '✓ Guardar'; }
   });
   container.querySelector('#btn-cancelar-edit-insumo').addEventListener('click', () => cerrarModal('#modal-edit-insumo'));
@@ -523,7 +598,7 @@ async function initAdminView(container) {
       return `
       <div class="flex items-center gap-3 p-3 rounded-lg border transition-colors ${bajo ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}">
         <div class="flex-1 min-w-0">
-          <p class="text-sm font-semibold text-slate-700 truncate">${i.replace(/_/g,' ')}</p>
+          <p class="text-sm font-semibold text-slate-700 truncate">${i.replace(/_/g, ' ')}</p>
           ${bajo ? '<p class="text-xs text-red-500 font-medium">⚠️ Stock bajo</p>' : ''}
         </div>
         <div class="flex items-center gap-2 shrink-0">
@@ -538,8 +613,8 @@ async function initAdminView(container) {
         const insumo = btn.dataset.insumo;
         const cantidad = parseInt(container.querySelector(`#stock-${insumo}`).value) || 0;
         btn.disabled = true; btn.textContent = '...';
-        try { await actualizarStock(insumo, cantidad); stockData[insumo] = cantidad; renderStock(); showAlert('#alert-catalogos',`✅ Stock de "${insumo.replace(/_/g,' ')}" ajustado a ${cantidad} unidades.`); }
-        catch(e) { showAlert('#alert-catalogos','❌ ' + e.message,'error'); }
+        try { await actualizarStock(insumo, cantidad); stockData[insumo] = cantidad; renderStock(); showAlert('#alert-catalogos', `✅ Stock de "${insumo.replace(/_/g, ' ')}" ajustado a ${cantidad} unidades.`); }
+        catch (e) { showAlert('#alert-catalogos', '❌ ' + e.message, 'error'); }
         finally { btn.disabled = false; btn.textContent = '💾'; }
       });
     });
@@ -549,7 +624,7 @@ async function initAdminView(container) {
   try {
     [catalogos, stockData] = await Promise.all([getCatalogosCompletos(), getStock()]);
     sincFiltros(); renderPabellones(); renderInsumos(); renderStock();
-  } catch(err) { console.error("Error cargando catálogos:", err); }
+  } catch (err) { console.error("Error cargando catálogos:", err); }
 
   // ====== SWITCH VISTAS STOCK / INGRESOS ======
   function sincIngFiltroInsumo() {
@@ -560,8 +635,8 @@ async function initAdminView(container) {
     sel.innerHTML = '<option value="">Todos</option>';
     selForm.innerHTML = '<option value="">Seleccione...</option>';
     catalogos.insumos.forEach(i => {
-      const o1 = document.createElement('option'); o1.value = i; o1.textContent = i.replace(/_/g,' '); sel.appendChild(o1);
-      const o2 = document.createElement('option'); o2.value = i; o2.textContent = i.replace(/_/g,' '); selForm.appendChild(o2);
+      const o1 = document.createElement('option'); o1.value = i; o1.textContent = i.replace(/_/g, ' '); sel.appendChild(o1);
+      const o2 = document.createElement('option'); o2.value = i; o2.textContent = i.replace(/_/g, ' '); selForm.appendChild(o2);
     });
     sel.value = v;
   }
@@ -593,27 +668,27 @@ async function initAdminView(container) {
       if (!porMes[ing.mes]) porMes[ing.mes] = {};
       porMes[ing.mes][ing.insumo] = (porMes[ing.mes][ing.insumo] || 0) + ing.cantidad;
     });
-    const meses = Object.keys(porMes).sort((a,b) => b.localeCompare(a)).slice(0,3); // últimos 3 meses
-    const mesesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const meses = Object.keys(porMes).sort((a, b) => b.localeCompare(a)).slice(0, 3); // últimos 3 meses
+    const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     resumenDiv.innerHTML = `
       <p class="text-xs font-bold text-slate-500 uppercase mb-2">📅 Resumen por Mes (últimos ${meses.length})</p>
-      <div class="grid grid-cols-1 sm:grid-cols-${Math.min(meses.length,3)} gap-3 mb-4">
+      <div class="grid grid-cols-1 sm:grid-cols-${Math.min(meses.length, 3)} gap-3 mb-4">
         ${meses.map(mes => {
-          const [y, m] = mes.split('-');
-          const nombreMes = `${mesesNombres[parseInt(m)-1]} ${y}`;
-          const insumos = porMes[mes];
-          const totalUnidades = Object.values(insumos).reduce((a,b) => a+b, 0);
-          return `
+      const [y, m] = mes.split('-');
+      const nombreMes = `${mesesNombres[parseInt(m) - 1]} ${y}`;
+      const insumos = porMes[mes];
+      const totalUnidades = Object.values(insumos).reduce((a, b) => a + b, 0);
+      return `
             <div class="p-4 bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl border border-amber-200">
               <p class="font-bold text-amber-800 text-sm mb-2">${nombreMes}</p>
               <p class="text-2xl font-extrabold text-amber-700 mb-2">${totalUnidades.toLocaleString()} u.</p>
               <div class="space-y-1">
                 ${Object.entries(insumos).map(([ins, qty]) =>
-                  `<div class="flex justify-between text-xs"><span class="text-slate-600 truncate">${ins.replace(/_/g,' ')}</span><span class="font-bold text-amber-700 ml-2">${qty}</span></div>`
-                ).join('')}
+        `<div class="flex justify-between text-xs"><span class="text-slate-600 truncate">${ins.replace(/_/g, ' ')}</span><span class="font-bold text-amber-700 ml-2">${qty}</span></div>`
+      ).join('')}
               </div>
             </div>`;
-        }).join('')}
+    }).join('')}
       </div>`;
   }
 
@@ -625,20 +700,20 @@ async function initAdminView(container) {
       if (count) count.textContent = '';
       return;
     }
-    const mesesNombres = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const mesesNombres = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     tbody.innerHTML = '';
     ingresos.forEach(ing => {
       const [y, m] = (ing.mes || '').split('-');
-      const mesesNombres2 = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+      const mesesNombres2 = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
       const mesLabel = m ? `${mesesNombres2[parseInt(m)]} ${y}` : (ing.mes || '-');
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="font-semibold text-amber-700 text-sm">${mesLabel}</td>
         <td class="text-sm text-slate-600">${ing.fecha || ing.fecha_registro || '-'}</td>
-        <td class="text-sm font-medium">${(ing.insumo||'').replace(/_/g,' ')}</td>
-        <td class="text-sm text-center font-bold text-slate-800">${(ing.cantidad||0).toLocaleString()}</td>
-        <td class="text-sm">${ing.registrado_por||'-'}</td>
-        <td class="text-sm text-slate-500 max-w-xs truncate" title="${ing.notas||''}">${ing.notas||'—'}</td>
+        <td class="text-sm font-medium">${(ing.insumo || '').replace(/_/g, ' ')}</td>
+        <td class="text-sm text-center font-bold text-slate-800">${(ing.cantidad || 0).toLocaleString()}</td>
+        <td class="text-sm">${ing.registrado_por || '-'}</td>
+        <td class="text-sm text-slate-500 max-w-xs truncate" title="${ing.notas || ''}">${ing.notas || '—'}</td>
         <td><button class="btn-del-ing text-xs px-2 py-1 rounded text-red-500 hover:bg-red-50 transition-colors" data-id="${ing.id}">🗑️</button></td>`;
       tbody.appendChild(tr);
     });
@@ -651,7 +726,7 @@ async function initAdminView(container) {
           renderResumenMes(ingresosCache);
           renderTablaIngresos(ingresosCache);
           showAlert('#alert-catalogos', '✅ Ingreso eliminado.');
-        } catch(e) { showAlert('#alert-catalogos','❌ '+e.message,'error'); }
+        } catch (e) { showAlert('#alert-catalogos', '❌ ' + e.message, 'error'); }
       });
     });
     if (count) count.textContent = `${ingresos.length} ingreso(s) encontrado(s).`;
@@ -664,7 +739,7 @@ async function initAdminView(container) {
       ingresosCache = await obtenerIngresosStock();
       renderResumenMes(ingresosCache);
       renderTablaIngresos(ingresosCache);
-    } catch(e) {
+    } catch (e) {
       tbody.innerHTML = '<tr><td colspan="7" class="text-center text-red-400 py-6">Error al cargar.</td></tr>';
     }
   }
@@ -695,9 +770,9 @@ async function initAdminView(container) {
     if (mes) datos = datos.filter(i => i.mes === mes);
     if (insumo) datos = datos.filter(i => i.insumo === insumo);
     if (!datos.length) return alert('No hay datos para exportar.');
-    const header = ['MES','FECHA PEDIDO','INSUMO','CANTIDAD','REGISTRADO POR','NOTAS'];
-    const rows = datos.map(i => [i.mes, i.fecha || i.fecha_registro, i.insumo, i.cantidad, i.registrado_por, i.notas||'']);
-    const csv = '\uFEFF' + [header,...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const header = ['MES', 'FECHA PEDIDO', 'INSUMO', 'CANTIDAD', 'REGISTRADO POR', 'NOTAS'];
+    const rows = datos.map(i => [i.mes, i.fecha || i.fecha_registro, i.insumo, i.cantidad, i.registrado_por, i.notas || '']);
+    const csv = '\uFEFF' + [header, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url;
@@ -708,11 +783,11 @@ async function initAdminView(container) {
   // Registrar nuevo ingreso
   container.querySelector('#form-ingreso-stock').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const insumo  = container.querySelector('#ing-insumo').value;
+    const insumo = container.querySelector('#ing-insumo').value;
     const cantidad = parseInt(container.querySelector('#ing-cantidad').value) || 0;
-    const fecha   = container.querySelector('#ing-fecha').value;   // YYYY-MM-DD
-    const notas   = container.querySelector('#ing-notas').value.trim();
-    if (!insumo || !cantidad || !fecha) { showAlert('#alert-catalogos','⚠️ Completa Insumo, Cantidad y Fecha.','error'); return; }
+    const fecha = container.querySelector('#ing-fecha').value;   // YYYY-MM-DD
+    const notas = container.querySelector('#ing-notas').value.trim();
+    if (!insumo || !cantidad || !fecha) { showAlert('#alert-catalogos', '⚠️ Completa Insumo, Cantidad y Fecha.', 'error'); return; }
     const btn = container.querySelector('#btn-registrar-ingreso');
     btn.disabled = true; btn.textContent = 'Registrando...';
     try {
@@ -728,9 +803,78 @@ async function initAdminView(container) {
       renderStock();
       e.target.reset();
       const mes = ingreso.mes;
-      showAlert('#alert-catalogos', `✅ Ingreso de ${cantidad} unidades de "${insumo.replace(/_/g,' ')}" registrado para ${fecha}. Stock actual actualizado.`);
-    } catch(err) { showAlert('#alert-catalogos','❌ '+err.message,'error'); }
+      showAlert('#alert-catalogos', `✅ Ingreso de ${cantidad} unidades de "${insumo.replace(/_/g, ' ')}" registrado para ${fecha}. Stock actual actualizado.`);
+    } catch (err) { showAlert('#alert-catalogos', '❌ ' + err.message, 'error'); }
     finally { btn.disabled = false; btn.textContent = '✓ Registrar Ingreso'; }
+  });
+
+  // ====== CONFIG AGUA ======
+  let configAgua = { max_bidones: 10, areas_solicitantes: [] };
+
+  function renderAreasSolicitantes() {
+    const div = container.querySelector('#lista-areas');
+    if (!div) return;
+    if (!configAgua.areas_solicitantes.length) {
+      div.innerHTML = '<p class="text-xs text-slate-400 text-center py-3">Sin áreas registradas.</p>';
+      return;
+    }
+    div.innerHTML = configAgua.areas_solicitantes.map(area => `
+      <div class="flex items-center justify-between gap-2 p-2.5 bg-blue-50 rounded-lg border border-blue-100 group hover:border-blue-300 transition-all">
+        <div class="flex items-center gap-2">
+          <span class="w-6 h-6 rounded-md bg-blue-500 text-white text-xs flex items-center justify-center font-bold">🏢</span>
+          <span class="text-sm font-medium text-slate-700">${area}</span>
+        </div>
+        <button class="btn-del-area text-xs px-2 py-1 rounded text-red-400 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all" data-area="${area}">🗑️</button>
+      </div>`).join('');
+
+    div.querySelectorAll('.btn-del-area').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`¿Eliminar el área "${btn.dataset.area}"?`)) return;
+        try {
+          configAgua.areas_solicitantes = await eliminarAreaSolicitante(btn.dataset.area);
+          renderAreasSolicitantes();
+          showAlert('#alert-catalogos', `✅ Área "${btn.dataset.area}" eliminada.`);
+        } catch (e) { showAlert('#alert-catalogos', '❌ ' + e.message, 'error'); }
+      });
+    });
+  }
+
+  async function cargarConfigAgua() {
+    try {
+      configAgua = await getConfigAgua();
+      const inp = container.querySelector('#agua-max-bidones');
+      if (inp) inp.value = configAgua.max_bidones;
+      renderAreasSolicitantes();
+    } catch (e) { console.error('Error al cargar config agua:', e); }
+  }
+  cargarConfigAgua();
+
+  container.querySelector('#btn-guardar-max-bidones')?.addEventListener('click', async () => {
+    const val = parseInt(container.querySelector('#agua-max-bidones').value);
+    if (!val || val < 1) { showAlert('#alert-catalogos', '⚠️ Ingresa un número válido mayor a 0.', 'error'); return; }
+    const btn = container.querySelector('#btn-guardar-max-bidones');
+    btn.disabled = true; btn.textContent = 'Guardando...';
+    try {
+      await actualizarMaxBidones(val);
+      configAgua.max_bidones = val;
+      showAlert('#alert-catalogos', `✅ Máximo de bidones actualizado a ${val}.`);
+    } catch (e) { showAlert('#alert-catalogos', '❌ ' + e.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = '💾 Guardar'; }
+  });
+
+  container.querySelector('#form-add-area')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const nombre = container.querySelector('#area-nombre').value.trim();
+    if (!nombre) return;
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.textContent = '...';
+    try {
+      configAgua.areas_solicitantes = await agregarAreaSolicitante(nombre);
+      renderAreasSolicitantes();
+      e.target.reset();
+      showAlert('#alert-catalogos', `✅ Área "${nombre.toUpperCase()}" agregada.`);
+    } catch (e) { showAlert('#alert-catalogos', '❌ ' + e.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = '+ Agregar'; }
   });
 
   // Agregar pabellón
@@ -741,8 +885,8 @@ async function initAdminView(container) {
     const nombre = container.querySelector('#pabellon-nombre').value.trim();
     const max_pisos = parseInt(container.querySelector('#pabellon-pisos').value);
     btn.disabled = true; btn.textContent = '...';
-    try { const n = await agregarPabellon(codigo, nombre, max_pisos); catalogos.pabellones.push(n); catalogos.pabellones.sort((a,b)=>a.nombre.localeCompare(b.nombre)); renderPabellones(); sincFiltros(); e.target.reset(); showAlert('#alert-catalogos',`✅ Pabellón "${nombre}" agregado.`); }
-    catch(e) { showAlert('#alert-catalogos','❌ ' + e.message,'error'); }
+    try { const n = await agregarPabellon(codigo, nombre, max_pisos); catalogos.pabellones.push(n); catalogos.pabellones.sort((a, b) => a.nombre.localeCompare(b.nombre)); renderPabellones(); sincFiltros(); e.target.reset(); showAlert('#alert-catalogos', `✅ Pabellón "${nombre}" agregado.`); }
+    catch (e) { showAlert('#alert-catalogos', '❌ ' + e.message, 'error'); }
     finally { btn.disabled = false; btn.textContent = '+ Agregar'; }
   });
 
@@ -750,10 +894,10 @@ async function initAdminView(container) {
   container.querySelector('#form-add-insumo').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = e.target.querySelector('button[type="submit"]');
-    const nombre = container.querySelector('#insumo-nombre').value.trim().toUpperCase().replace(/ /g,'_');
+    const nombre = container.querySelector('#insumo-nombre').value.trim().toUpperCase().replace(/ /g, '_');
     btn.disabled = true; btn.textContent = '...';
-    try { await agregarInsumo(nombre); catalogos.insumos.push(nombre); catalogos.insumos.sort(); renderInsumos(); renderStock(); sincFiltros(); e.target.reset(); showAlert('#alert-catalogos',`✅ Insumo "${nombre}" agregado.`); }
-    catch(e) { showAlert('#alert-catalogos','❌ ' + e.message,'error'); }
+    try { await agregarInsumo(nombre); catalogos.insumos.push(nombre); catalogos.insumos.sort(); renderInsumos(); renderStock(); sincFiltros(); e.target.reset(); showAlert('#alert-catalogos', `✅ Insumo "${nombre}" agregado.`); }
+    catch (e) { showAlert('#alert-catalogos', '❌ ' + e.message, 'error'); }
     finally { btn.disabled = false; btn.textContent = '+ Agregar'; }
   });
 
@@ -765,66 +909,66 @@ async function initAdminView(container) {
   const regDisc = container.querySelector('#reg-discapacitado');
   const regTotal = container.querySelector('#reg-total');
 
-  function actualizarTotalModal() { regTotal.textContent = (parseInt(regDamas.value)||0)+(parseInt(regVarones.value)||0)+(parseInt(regDisc.value)||0); }
-  [regDamas,regVarones,regDisc].forEach(i => i.addEventListener('input', actualizarTotalModal));
+  function actualizarTotalModal() { regTotal.textContent = (parseInt(regDamas.value) || 0) + (parseInt(regVarones.value) || 0) + (parseInt(regDisc.value) || 0); }
+  [regDamas, regVarones, regDisc].forEach(i => i.addEventListener('input', actualizarTotalModal));
 
-  function abrirModalReg(id) { entregaIdPendiente = id; container.querySelector('#modal-regularizar').style.display='flex'; container.querySelector('#modal-regularizar').classList.remove('hidden'); container.querySelector('#reg-piso').value=''; regDamas.value=0; regVarones.value=0; regDisc.value=0; actualizarTotalModal(); container.querySelector('#alert-modal-reg').innerHTML=''; }
-  function cerrarModalReg() { container.querySelector('#modal-regularizar').style.display=''; container.querySelector('#modal-regularizar').classList.add('hidden'); entregaIdPendiente=null; }
+  function abrirModalReg(id) { entregaIdPendiente = id; container.querySelector('#modal-regularizar').style.display = 'flex'; container.querySelector('#modal-regularizar').classList.remove('hidden'); container.querySelector('#reg-piso').value = ''; regDamas.value = 0; regVarones.value = 0; regDisc.value = 0; actualizarTotalModal(); container.querySelector('#alert-modal-reg').innerHTML = ''; }
+  function cerrarModalReg() { container.querySelector('#modal-regularizar').style.display = ''; container.querySelector('#modal-regularizar').classList.add('hidden'); entregaIdPendiente = null; }
 
   container.querySelector('#btn-cancelar-reg').addEventListener('click', cerrarModalReg);
   container.querySelector('#btn-confirmar-reg').addEventListener('click', async () => {
     if (!entregaIdPendiente) return;
-    const piso = parseInt(container.querySelector('#reg-piso').value)||null;
-    const d=parseInt(regDamas.value)||0, v=parseInt(regVarones.value)||0, dc=parseInt(regDisc.value)||0;
+    const piso = parseInt(container.querySelector('#reg-piso').value) || null;
+    const d = parseInt(regDamas.value) || 0, v = parseInt(regVarones.value) || 0, dc = parseInt(regDisc.value) || 0;
     const btn = container.querySelector('#btn-confirmar-reg');
-    btn.disabled=true; btn.textContent='Guardando...';
+    btn.disabled = true; btn.textContent = 'Guardando...';
     try {
       const user = await getCurrentUser();
       await regularizarEntrega(entregaIdPendiente, piso, d, v, dc, user.uid);
       cerrarModalReg(); cargarEntregas(getFiltros());
-    } catch(err) { container.querySelector('#alert-modal-reg').innerHTML=`<div class="alert alert-error mb-3">❌ ${err.message}</div>`; }
-    finally { btn.disabled=false; btn.textContent='✓ Confirmar'; }
+    } catch (err) { container.querySelector('#alert-modal-reg').innerHTML = `<div class="alert alert-error mb-3">❌ ${err.message}</div>`; }
+    finally { btn.disabled = false; btn.textContent = '✓ Confirmar'; }
   });
 
-  async function cargarEntregas(filtros={}) {
-    tbodyReg.innerHTML='<tr><td colspan="11" class="text-center text-slate-400 py-8">Cargando...</td></tr>';
+  async function cargarEntregas(filtros = {}) {
+    tbodyReg.innerHTML = '<tr><td colspan="11" class="text-center text-slate-400 py-8">Cargando...</td></tr>';
     try {
       const entregas = await filtrarEntregas(filtros.fechaInicio, filtros.fechaFin, filtros.insumo, filtros.pabellon, filtros.estado);
-      tbodyReg.innerHTML='';
-      if (!entregas.length) { tbodyReg.innerHTML='<tr><td colspan="11" class="text-center text-slate-400 py-8">No hay entregas.</td></tr>'; return; }
+      tbodyReg.innerHTML = '';
+      if (!entregas.length) { tbodyReg.innerHTML = '<tr><td colspan="11" class="text-center text-slate-400 py-8">No hay entregas.</td></tr>'; return; }
       entregas.forEach(e => {
-        const esReg=e.estado==='REGULARIZADO'; const det=e.detalle_banos||{};
-        const tr=document.createElement('tr');
-        tr.innerHTML=`
+        const esReg = e.estado === 'REGULARIZADO'; const det = e.detalle_banos || {};
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
           <td class="text-sm">${e.fecha_registro}</td>
-          <td class="text-sm font-medium">${(e.insumo||'').replace(/_/g,' ')}</td>
-          <td class="text-sm">${e.pabellon||'-'}</td>
-          <td class="text-sm text-center">${e.piso??'-'}</td>
-          <td class="text-sm text-center">${det.damas??'-'}</td>
-          <td class="text-sm text-center">${det.varones??'-'}</td>
-          <td class="text-sm text-center">${det.discapacitado??'-'}</td>
-          <td class="text-sm text-center font-bold">${e.cantidad_total??'-'}</td>
-          <td class="text-sm">${e.encargado?.nombre||'-'}</td>
-          <td><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${esReg?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${esReg?'✓ Reg.':'⏳ Pend.'}</span></td>
-          <td>${!esReg?`<button class="btn-reg text-xs px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold" data-id="${e.id}">Regularizar</button>`:'<span class="text-slate-300 text-xs">—</span>'}</td>`;
+          <td class="text-sm font-medium">${(e.insumo || '').replace(/_/g, ' ')}</td>
+          <td class="text-sm">${e.pabellon || '-'}</td>
+          <td class="text-sm text-center">${e.piso ?? '-'}</td>
+          <td class="text-sm text-center">${det.damas ?? '-'}</td>
+          <td class="text-sm text-center">${det.varones ?? '-'}</td>
+          <td class="text-sm text-center">${det.discapacitado ?? '-'}</td>
+          <td class="text-sm text-center font-bold">${e.cantidad_total ?? '-'}</td>
+          <td class="text-sm">${e.encargado?.nombre || '-'}</td>
+          <td><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${esReg ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${esReg ? '✓ Reg.' : '⏳ Pend.'}</span></td>
+          <td>${!esReg ? `<button class="btn-reg text-xs px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold" data-id="${e.id}">Regularizar</button>` : '<span class="text-slate-300 text-xs">—</span>'}</td>`;
         tbodyReg.appendChild(tr);
       });
       container.querySelectorAll('.btn-reg').forEach(btn => btn.addEventListener('click', () => abrirModalReg(btn.dataset.id)));
-    } catch(err) { tbodyReg.innerHTML='<tr><td colspan="11" class="text-center text-red-400 py-8">Error al cargar.</td></tr>'; }
+    } catch (err) { tbodyReg.innerHTML = '<tr><td colspan="11" class="text-center text-red-400 py-8">Error al cargar.</td></tr>'; }
   }
 
   function getFiltros() {
     return {
-      fechaInicio: container.querySelector('#filtro-fecha-inicio').value||null,
-      fechaFin:    container.querySelector('#filtro-fecha-fin').value||null,
-      insumo:      container.querySelector('#filtro-insumo').value||null,
-      pabellon:    container.querySelector('#filtro-pabellon').value||null,
-      estado:      container.querySelector('#filtro-estado').value||null
+      fechaInicio: container.querySelector('#filtro-fecha-inicio').value || null,
+      fechaFin: container.querySelector('#filtro-fecha-fin').value || null,
+      insumo: container.querySelector('#filtro-insumo').value || null,
+      pabellon: container.querySelector('#filtro-pabellon').value || null,
+      estado: container.querySelector('#filtro-estado').value || null
     };
   }
   container.querySelector('#btn-filtrar').addEventListener('click', () => cargarEntregas(getFiltros()));
   container.querySelector('#btn-limpiar-filtros').addEventListener('click', () => {
-    ['#filtro-fecha-inicio','#filtro-fecha-fin','#filtro-insumo','#filtro-pabellon','#filtro-estado'].forEach(s => { container.querySelector(s).value=''; });
+    ['#filtro-fecha-inicio', '#filtro-fecha-fin', '#filtro-insumo', '#filtro-pabellon', '#filtro-estado'].forEach(s => { container.querySelector(s).value = ''; });
     cargarEntregas();
   });
   cargarEntregas();
@@ -832,75 +976,75 @@ async function initAdminView(container) {
   // ====== USUARIOS ======
   const tbodyUsers = container.querySelector('#tbody-usuarios');
   async function cargarUsuarios() {
-    tbodyUsers.innerHTML='<tr><td colspan="6" class="text-center text-slate-400 py-8">Cargando...</td></tr>';
+    tbodyUsers.innerHTML = '<tr><td colspan="6" class="text-center text-slate-400 py-8">Cargando...</td></tr>';
     try {
       const usuarios = await obtenerTodosLosUsuarios();
-      tbodyUsers.innerHTML='';
+      tbodyUsers.innerHTML = '';
       usuarios.forEach(u => {
-        const tr=document.createElement('tr');
-        tr.innerHTML=`
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
           <td class="font-medium text-slate-800">${u.nombre_completo}</td>
           <td class="font-mono text-sm">${u.dni}</td>
           <td class="text-sm text-slate-500">${u.correo}</td>
-          <td><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${u.rol==='ADMIN'?'bg-purple-100 text-purple-700':'bg-blue-100 text-blue-700'}">${u.rol}</span></td>
-          <td><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${u.activo?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-700'}">${u.activo?'● Activo':'○ Inactivo'}</span></td>
-          <td><button class="btn-toggle text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${u.activo?'bg-red-50 text-red-600 hover:bg-red-100':'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}" data-id="${u.id}" data-activo="${!u.activo}">${u.activo?'Desactivar':'Activar'}</button></td>`;
+          <td><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${u.rol === 'ADMIN' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}">${u.rol}</span></td>
+          <td><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${u.activo ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}">${u.activo ? '● Activo' : '○ Inactivo'}</span></td>
+          <td><button class="btn-toggle text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${u.activo ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}" data-id="${u.id}" data-activo="${!u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button></td>`;
         tbodyUsers.appendChild(tr);
       });
       container.querySelectorAll('.btn-toggle').forEach(btn => {
         btn.addEventListener('click', async () => {
-          try { await cambiarEstadoUsuario(btn.dataset.id, btn.dataset.activo==='true'); cargarUsuarios(); }
-          catch(err) { showAlert('#alert-usuarios','❌ '+err.message,'error'); }
+          try { await cambiarEstadoUsuario(btn.dataset.id, btn.dataset.activo === 'true'); cargarUsuarios(); }
+          catch (err) { showAlert('#alert-usuarios', '❌ ' + err.message, 'error'); }
         });
       });
-    } catch(e) { tbodyUsers.innerHTML='<tr><td colspan="6" class="text-center text-red-400 py-8">Error.</td></tr>'; }
+    } catch (e) { tbodyUsers.innerHTML = '<tr><td colspan="6" class="text-center text-red-400 py-8">Error.</td></tr>'; }
   }
   container.querySelector('#form-nuevo-usuario').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const btn=container.querySelector('#btn-agregar-usuario');
-    btn.disabled=true; btn.textContent='Registrando...';
+    const btn = container.querySelector('#btn-agregar-usuario');
+    btn.disabled = true; btn.textContent = 'Registrando...';
     try {
-      await registrarUsuario(container.querySelector('#nuevo-correo').value, container.querySelector('#nuevo-dni').value, container.querySelector('#nuevo-nombre').value, container.querySelector('#nuevo-rol').value, container.querySelector('#nuevo-activo').value==='true');
-      showAlert('#alert-usuarios','✅ Usuario registrado.'); e.target.reset(); cargarUsuarios();
-    } catch(err) { showAlert('#alert-usuarios','❌ '+err.message,'error'); }
-    finally { btn.disabled=false; btn.textContent='✓ Registrar Usuario'; }
+      await registrarUsuario(container.querySelector('#nuevo-correo').value, container.querySelector('#nuevo-dni').value, container.querySelector('#nuevo-nombre').value, container.querySelector('#nuevo-rol').value, container.querySelector('#nuevo-activo').value === 'true');
+      showAlert('#alert-usuarios', '✅ Usuario registrado.'); e.target.reset(); cargarUsuarios();
+    } catch (err) { showAlert('#alert-usuarios', '❌ ' + err.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = '✓ Registrar Usuario'; }
   });
   cargarUsuarios();
 
   // ====== EXPORTAR ======
   async function cargarExport() {
-    const tbody=container.querySelector('#tbody-export');
-    tbody.innerHTML='<tr><td colspan="10" class="text-center text-slate-400 py-8">Cargando...</td></tr>';
-    const filtros={ fechaInicio:container.querySelector('#exp-fecha-inicio').value||null, fechaFin:container.querySelector('#exp-fecha-fin').value||null, insumo:container.querySelector('#exp-insumo').value||null, pabellon:container.querySelector('#exp-pabellon').value||null };
+    const tbody = container.querySelector('#tbody-export');
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-slate-400 py-8">Cargando...</td></tr>';
+    const filtros = { fechaInicio: container.querySelector('#exp-fecha-inicio').value || null, fechaFin: container.querySelector('#exp-fecha-fin').value || null, insumo: container.querySelector('#exp-insumo').value || null, pabellon: container.querySelector('#exp-pabellon').value || null };
     try {
-      entregasExport=await filtrarEntregas(filtros.fechaInicio,filtros.fechaFin,filtros.insumo,filtros.pabellon);
-      tbody.innerHTML='';
-      if (!entregasExport.length) { tbody.innerHTML='<tr><td colspan="10" class="text-center text-slate-400 py-8">Sin resultados.</td></tr>'; container.querySelector('#exp-count').textContent=''; return; }
+      entregasExport = await filtrarEntregas(filtros.fechaInicio, filtros.fechaFin, filtros.insumo, filtros.pabellon);
+      tbody.innerHTML = '';
+      if (!entregasExport.length) { tbody.innerHTML = '<tr><td colspan="10" class="text-center text-slate-400 py-8">Sin resultados.</td></tr>'; container.querySelector('#exp-count').textContent = ''; return; }
       entregasExport.forEach(e => {
-        const det=e.detalle_banos||{};
-        const tr=document.createElement('tr');
-        tr.innerHTML=`<td class="text-sm">${e.fecha_registro}</td><td class="text-sm font-medium">${(e.insumo||'').replace(/_/g,' ')}</td><td class="text-sm">${e.pabellon||'-'}</td><td class="text-sm text-center">${e.piso??'-'}</td><td class="text-sm text-center">${det.damas??0}</td><td class="text-sm text-center">${det.varones??0}</td><td class="text-sm text-center">${det.discapacitado??0}</td><td class="text-sm text-center font-bold">${e.cantidad_total??0}</td><td><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${e.estado==='REGULARIZADO'?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${e.estado}</span></td><td class="text-sm">${e.encargado?.nombre||'-'}</td>`;
+        const det = e.detalle_banos || {};
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class="text-sm">${e.fecha_registro}</td><td class="text-sm font-medium">${(e.insumo || '').replace(/_/g, ' ')}</td><td class="text-sm">${e.pabellon || '-'}</td><td class="text-sm text-center">${e.piso ?? '-'}</td><td class="text-sm text-center">${det.damas ?? 0}</td><td class="text-sm text-center">${det.varones ?? 0}</td><td class="text-sm text-center">${det.discapacitado ?? 0}</td><td class="text-sm text-center font-bold">${e.cantidad_total ?? 0}</td><td><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${e.estado === 'REGULARIZADO' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${e.estado}</span></td><td class="text-sm">${e.encargado?.nombre || '-'}</td>`;
         tbody.appendChild(tr);
       });
-      container.querySelector('#exp-count').textContent=`${entregasExport.length} registro(s) encontrado(s).`;
-    } catch(err) { tbody.innerHTML='<tr><td colspan="10" class="text-center text-red-400 py-8">Error al cargar.</td></tr>'; }
+      container.querySelector('#exp-count').textContent = `${entregasExport.length} registro(s) encontrado(s).`;
+    } catch (err) { tbody.innerHTML = '<tr><td colspan="10" class="text-center text-red-400 py-8">Error al cargar.</td></tr>'; }
   }
   container.querySelector('#btn-exp-filtrar').addEventListener('click', cargarExport);
 
   container.querySelector('#btn-exp-excel').addEventListener('click', () => {
     if (!entregasExport.length) return alert('Primero realiza una búsqueda.');
-    const header=['FECHA','INSUMO','PABELLON','PISO','DAMAS','VARONES','DISCAPACITADO','TOTAL','ESTADO','ENCARGADO'];
-    const rows=entregasExport.map(e => { const det=e.detalle_banos||{}; return [e.fecha_registro,e.insumo,e.pabellon,e.piso??'',det.damas??0,det.varones??0,det.discapacitado??0,e.cantidad_total??0,e.estado,e.encargado?.nombre||'']; });
-    const csv='\uFEFF'+[header,...rows].map(r=>r.map(c=>`"${c}"`).join(',')).join('\n');
-    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`entregas_${new Date().toISOString().split('T')[0]}.csv`;
+    const header = ['FECHA', 'INSUMO', 'PABELLON', 'PISO', 'DAMAS', 'VARONES', 'DISCAPACITADO', 'TOTAL', 'ESTADO', 'ENCARGADO'];
+    const rows = entregasExport.map(e => { const det = e.detalle_banos || {}; return [e.fecha_registro, e.insumo, e.pabellon, e.piso ?? '', det.damas ?? 0, det.varones ?? 0, det.discapacitado ?? 0, e.cantidad_total ?? 0, e.estado, e.encargado?.nombre || '']; });
+    const csv = '\uFEFF' + [header, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `entregas_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
   });
 
   container.querySelector('#btn-exp-pdf').addEventListener('click', () => {
     if (!entregasExport.length) return alert('Primero realiza una búsqueda.');
-    const filas=entregasExport.map(e => { const det=e.detalle_banos||{}; return `<tr><td>${e.fecha_registro}</td><td>${(e.insumo||'').replace(/_/g,' ')}</td><td>${e.pabellon||'-'}</td><td>${e.piso??'-'}</td><td>${det.damas??0}</td><td>${det.varones??0}</td><td>${det.discapacitado??0}</td><td><b>${e.cantidad_total??0}</b></td><td>${e.estado}</td><td>${e.encargado?.nombre||'-'}</td></tr>`; }).join('');
-    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Reporte de Entregas</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px}h2{color:#0d9488}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px 8px;text-align:center}th{background:#0d9488;color:#fff}tr:nth-child(even){background:#f8fafc}</style></head><body><h2>Reporte de Entregas — PAB-IN</h2><p>Generado el ${new Date().toLocaleString('es-PE')}</p><table><thead><tr><th>FECHA</th><th>INSUMO</th><th>PABELLÓN</th><th>PISO</th><th>DAMAS</th><th>VARONES</th><th>DISCAP.</th><th>TOTAL</th><th>ESTADO</th><th>ENCARGADO</th></tr></thead><tbody>${filas}</tbody></table></body></html>`;
-    const w=window.open('','_blank','width=1100,height=700'); w.document.write(html); w.document.close(); setTimeout(()=>{ w.focus(); w.print(); },500);
+    const filas = entregasExport.map(e => { const det = e.detalle_banos || {}; return `<tr><td>${e.fecha_registro}</td><td>${(e.insumo || '').replace(/_/g, ' ')}</td><td>${e.pabellon || '-'}</td><td>${e.piso ?? '-'}</td><td>${det.damas ?? 0}</td><td>${det.varones ?? 0}</td><td>${det.discapacitado ?? 0}</td><td><b>${e.cantidad_total ?? 0}</b></td><td>${e.estado}</td><td>${e.encargado?.nombre || '-'}</td></tr>`; }).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Reporte de Entregas</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px}h2{color:#0d9488}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px 8px;text-align:center}th{background:#0d9488;color:#fff}tr:nth-child(even){background:#f8fafc}</style></head><body><h2>Reporte de Entregas — PAB-IN</h2><p>Generado el ${new Date().toLocaleString('es-PE')}</p><table><thead><tr><th>FECHA</th><th>INSUMO</th><th>PABELLÓN</th><th>PISO</th><th>DAMAS</th><th>VARONES</th><th>DISCAP.</th><th>TOTAL</th><th>ESTADO</th><th>ENCARGADO</th></tr></thead><tbody>${filas}</tbody></table></body></html>`;
+    const w = window.open('', '_blank', 'width=1100,height=700'); w.document.write(html); w.document.close(); setTimeout(() => { w.focus(); w.print(); }, 500);
   });
 }

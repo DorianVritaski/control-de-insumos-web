@@ -3,7 +3,7 @@
 // Según la especificación Spec_Driven_Development.md - Sección 6.2, RF-02
 
 import { registrarEntrega, obtenerEntregasDelDia, obtenerEntregasDelOperador, actualizarEntrega, registrarEntregaMultipiso } from "../services/entregas.service.js";
-import { getPabellones, getInsumos, getStock } from "../services/catalogos.service.js";
+import { getPabellones, getInsumos, getStock, getConfigAgua, getInsumosConfig } from "../services/catalogos.service.js";
 import { isAuthenticated, getCurrentUser } from "../services/auth.service.js";
 
 
@@ -113,6 +113,79 @@ export function operadorView() {
                 ✓ Registrar Entrega
               </button>
             </form>
+
+            <!-- ===== FORMULARIO ESPECIAL AGUA ===== -->
+            <form id="agua-form" class="space-y-5 hidden">
+              <div class="flex items-center gap-2 p-3 rounded-xl border border-blue-200 bg-blue-50 mb-2">
+                <span class="text-xl">💧</span>
+                <div>
+                  <p class="text-sm font-bold text-blue-800">Formulario de Entrega de Agua</p>
+                  <p class="text-xs text-blue-500">Completa los datos para registrar la entrega de bidones.</p>
+                </div>
+              </div>
+
+              <!-- Insumo (readonly, ya fue seleccionado) -->
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Tipo de Insumo *</label>
+                  <select id="agua-insumo" class="form-input" required>
+                    <option value="">Cargando...</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Pabellón *</label>
+                  <select id="agua-pabellon" class="form-input" required>
+                    <option value="">Seleccione pabellón...</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Piso + Área Solicitante -->
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Piso <span class="normal-case text-slate-400">(opcional)</span></label>
+                  <input type="number" id="agua-piso" class="form-input" placeholder="Ej: 3" min="1" max="99" style="max-width:180px;">
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Área Solicitante *</label>
+                  <select id="agua-area" class="form-input" required>
+                    <option value="">Seleccione área...</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Ubicación Exacta -->
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Ubicación Exacta *</label>
+                <input type="text" id="agua-ubicacion" class="form-input" placeholder="Ej: Pasillo principal, oficina 201..." required>
+              </div>
+
+              <!-- Bidones -->
+              <div class="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                <label class="block text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1.5">🧔 Cantidad de Bidones *</label>
+                <select id="agua-bidones" class="form-input font-extrabold text-blue-700" style="font-size:1.1rem;" required>
+                  <option value="">Seleccione cantidad...</option>
+                </select>
+                <p class="text-xs text-blue-400 mt-1.5" id="agua-max-hint"></p>
+              </div>
+
+              <!-- Encargado -->
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Encargado</label>
+                  <input type="text" id="agua-encargado" class="form-input bg-slate-50" readonly>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">DNI</label>
+                  <input type="text" id="agua-dni" class="form-input bg-slate-50" readonly>
+                </div>
+              </div>
+
+              <button type="submit" id="btn-registrar-agua" class="btn w-full" style="padding:1rem;font-size:1rem;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;border-radius:0.75rem;font-weight:700;">
+                💧 Registrar Entrega de Agua
+              </button>
+            </form>
+
           </div>
 
           <!-- Panel lateral -->
@@ -354,7 +427,15 @@ export function operadorView() {
     // ====== CARGAR CATÁLOGOS ======
     async function cargarCatalogos() {
       try {
-        [pabellanesData, insumosData] = await Promise.all([getPabellones(), getInsumos()]);
+        const [_pabellones, todosInsumos, insumosConfig] = await Promise.all([
+          getPabellones(), getInsumos(), getInsumosConfig()
+        ]);
+        pabellanesData = _pabellones;
+        // Filtrar por módulo: Registro normal y Agua usan desactivados_registro
+        const desactReg   = insumosConfig.desactivados_registro   || [];
+        const desactMulti = insumosConfig.desactivados_multipiso  || [];
+        insumosData          = todosInsumos.filter(i => !desactReg.includes(i));
+        const insumosMultiData = todosInsumos.filter(i => !desactMulti.includes(i));
         pabellonSel.innerHTML = '<option value="">Seleccione pabellón...</option>';
         pabellanesData.forEach(p => {
           const o = document.createElement("option"); o.value = p.codigo; o.textContent = `${p.nombre} (Máx: ${p.max_pisos} pisos)`; pabellonSel.appendChild(o);
@@ -369,12 +450,12 @@ export function operadorView() {
         editInsumo.innerHTML = insumosData.map(i => `<option value="${i}">${i.replace(/_/g,' ')}</option>`).join('');
         editPabellon.innerHTML = pabellanesData.map(p => `<option value="${p.codigo}">${p.nombre}</option>`).join('');
 
-        // Poblar selectores del módulo Multipiso
+        // Poblar selectores del módulo Multipiso (usa filtro de multipiso)
         const mpIns = container.querySelector('#mp-insumo');
         const mpPab = container.querySelector('#mp-pabellon');
         if (mpIns && mpPab) {
           mpIns.innerHTML = '<option value="">Seleccione insumo...</option>';
-          insumosData.forEach(i => {
+          insumosMultiData.forEach(i => {
             const o = document.createElement('option'); o.value = i; o.textContent = i.replace(/_/g,' '); mpIns.appendChild(o);
           });
           mpPab.innerHTML = '<option value="">Seleccione pabellón...</option>';
@@ -382,10 +463,69 @@ export function operadorView() {
             const o = document.createElement('option'); o.value = p.codigo; o.dataset.pisos = p.max_pisos; o.textContent = `${p.nombre} (${p.max_pisos} pisos)`; mpPab.appendChild(o);
           });
         }
+
+        // Poblar selectores del formulario Agua
+        const aguaIns = container.querySelector('#agua-insumo');
+        const aguaPab = container.querySelector('#agua-pabellon');
+        if (aguaIns && aguaPab) {
+          aguaIns.innerHTML = '<option value="">Seleccione insumo...</option>';
+          insumosData.forEach(i => {
+            const o = document.createElement('option'); o.value = i; o.textContent = i.replace(/_/g,' ');
+            if (i.toUpperCase() === 'AGUA') o.selected = true;
+            aguaIns.appendChild(o);
+          });
+          aguaPab.innerHTML = '<option value="">Seleccione pabellón...</option>';
+          pabellanesData.forEach(p => {
+            const o = document.createElement('option'); o.value = p.codigo; o.textContent = `${p.nombre} (Máx: ${p.max_pisos} pisos)`; aguaPab.appendChild(o);
+          });
+          // Cargar config agua (areas y bidones)
+          try {
+            const cfg = await getConfigAgua();
+            const aguaArea = container.querySelector('#agua-area');
+            const aguaBidones = container.querySelector('#agua-bidones');
+            const aguaHint = container.querySelector('#agua-max-hint');
+            if (aguaArea) {
+              aguaArea.innerHTML = '<option value="">Seleccione área...</option>';
+              (cfg.areas_solicitantes || []).forEach(a => {
+                const o = document.createElement('option'); o.value = a; o.textContent = a; aguaArea.appendChild(o);
+              });
+            }
+            if (aguaBidones) {
+              const max = cfg.max_bidones || 10;
+              aguaBidones.innerHTML = '<option value="">Seleccione cantidad...</option>';
+              for (let n = 1; n <= max; n++) {
+                const o = document.createElement('option'); o.value = n; o.textContent = `${n} bidón${n > 1 ? 'es' : ''}`; aguaBidones.appendChild(o);
+              }
+              if (aguaHint) aguaHint.textContent = `Máximo configurado: ${max} bidones.`;
+            }
+          } catch(e) { console.warn('No se pudo cargar config agua:', e.message); }
+        }
+
       } catch (e) {
         alertContainer.innerHTML = `<div class="alert alert-error">Error al cargar catálogos: ${e.message}</div>`;
       }
     }
+
+    // ====== SWITCH FORMULARIO AGUA vs NORMAL ======
+    const registroForm = container.querySelector('#registro-form');
+    const aguaForm     = container.querySelector('#agua-form');
+
+    function esSelectorAgua(val) {
+      return val.toUpperCase().trim() === 'AGUA';
+    }
+
+    insumoSel.addEventListener('change', () => {
+      if (esSelectorAgua(insumoSel.value)) {
+        registroForm.classList.add('hidden');
+        aguaForm.classList.remove('hidden');
+        // Sincronizar insumo al form agua
+        const aguaIns = container.querySelector('#agua-insumo');
+        if (aguaIns) aguaIns.value = insumoSel.value;
+      } else {
+        registroForm.classList.remove('hidden');
+        aguaForm.classList.add('hidden');
+      }
+    });
 
     // ====== CÁlCULO / VALIDACIÓN TOTAL ======
     const cantTotalInput = container.querySelector("#cantidadTotal");
@@ -450,12 +590,17 @@ export function operadorView() {
     if (isAuthenticated()) {
       try {
         currentUser = await getCurrentUser();
-        encargado.value = currentUser.nombre_completo || "Operador";
+        encargado.value    = currentUser.nombre_completo || "Operador";
         encargadoDni.value = currentUser.dni || '';
+        // Autofill form Agua
+        const aguaEnc = container.querySelector('#agua-encargado');
+        const aguaDni = container.querySelector('#agua-dni');
+        if (aguaEnc) aguaEnc.value = currentUser.nombre_completo || 'Operador';
+        if (aguaDni) aguaDni.value = currentUser.dni || '';
         container.querySelector("#operador-nombre").textContent = (currentUser.nombre_completo||'').split(' ')[0];
         container.querySelector("#operador-estado").textContent = currentUser.activo ? "✅ Activo" : "❌ Inactivo";
         const fecha = new Date();
-        const dias = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+        const dias  = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
         const meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
         container.querySelector("#fecha-actual").textContent = `${dias[fecha.getDay()]}, ${fecha.getDate()} de ${meses[fecha.getMonth()]}`;
         await renderHistorialRapido(currentUser.uid);
@@ -535,6 +680,63 @@ export function operadorView() {
     container.querySelectorAll('.op-tab-btn').forEach(btn => {
       if (btn.dataset.tab === 'stock') {
         btn.addEventListener('click', cargarStock);
+      }
+    });
+
+    // ====== SUBMIT FORMULARIO AGUA ======
+    container.querySelector('#agua-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const insumo      = container.querySelector('#agua-insumo').value;
+      const pabellon    = container.querySelector('#agua-pabellon').value;
+      const piso        = parseInt(container.querySelector('#agua-piso').value) || null;
+      const area        = container.querySelector('#agua-area').value;
+      const ubicacion   = container.querySelector('#agua-ubicacion').value.trim();
+      const bidones     = parseInt(container.querySelector('#agua-bidones').value) || 0;
+
+      if (!insumo || !pabellon || !area || !ubicacion || !bidones) {
+        alertContainer.innerHTML = '<div class="alert alert-error">⚠️ Completa todos los campos obligatorios.</div>';
+        return;
+      }
+
+      const btn = container.querySelector('#btn-registrar-agua');
+      btn.disabled = true; btn.textContent = 'Registrando...';
+      alertContainer.innerHTML = '';
+
+      try {
+        // Usamos el servicio registrarEntrega pasando campos especiales de agua
+        const hoyLocal = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
+
+        await registrarEntrega({
+          fecha:            hoyLocal,
+          insumo,
+          pabellon,
+          piso:             piso || null,
+          damas:            0,
+          varones:          0,
+          discapacitado:    0,
+          cantidadTotal:    bidones,
+          encargado:        currentUser?.nombre_completo || 'Operador',
+          encargadoDni:     currentUser?.dni || '',
+          uid:              currentUser?.uid || null,
+          // Campos extra Agua (se guardarán en el documento de Firestore)
+          tipo_registro:    'AGUA',
+          area_solicitante: area,
+          ubicacion_exacta: ubicacion,
+          cantidad_bidones: bidones,
+          forzar_estado:    'REGULARIZADO'
+        });
+
+        alertContainer.innerHTML = `<div class="alert alert-success">💧 Entrega de ${bidones} bidón(es) de Agua registrada correctamente en ${pabellon}${piso ? ' Piso '+piso : ''}.</div>`;
+        setTimeout(() => { alertContainer.innerHTML = ''; }, 7000);
+        e.target.reset();
+        container.querySelector('#agua-encargado').value = currentUser?.nombre_completo || '';
+        container.querySelector('#agua-dni').value = currentUser?.dni || '';
+        if (currentUser) await renderHistorialRapido(currentUser.uid);
+      } catch(err) {
+        alertContainer.innerHTML = `<div class="alert alert-error">❌ ${err.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '💧 Registrar Entrega de Agua';
       }
     });
 

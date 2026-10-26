@@ -35,20 +35,53 @@ function fechaLocal() {
 
 /**
  * Registra una nueva entrega (módulo Operador).
+ * Acepta parámetros posicionales (compatibilidad) O un objeto de parámetros.
+ * El objeto admite campos extra para Agua: tipo_registro, area_solicitante, ubicacion_exacta, cantidad_bidones, forzar_estado.
  */
-export async function registrarEntrega(insumo, pabellon, piso, damas, varones, discapacitado, cantidadTotalManual, encargado, encargadoDni, encargadoUid, observaciones = null) {
+export async function registrarEntrega(insumoOrObj, pabellon, piso, damas, varones, discapacitado, cantidadTotalManual, encargado, encargadoDni, encargadoUid, observaciones = null) {
   try {
-    const d = parseInt(damas) || 0;
-    const v = parseInt(varones) || 0;
-    const dc = parseInt(discapacitado) || 0;
-    const sumaDesglose = d + v + dc;
-    const totalFinal = parseInt(cantidadTotalManual) || sumaDesglose;
-    const pisoNum = piso ? parseInt(piso) : null;
+    // Soporte dual: objeto o parámetros posicionales
+    let insumo, pisoVal, damasVal, varonesVal, discapVal, totalManual, encNombre, encDni, encUid, obs;
+    let camposExtra = {};
 
-    // REGULARIZADO solo si el desglose existe y coincide con el total
-    const tieneDesglose = sumaDesglose > 0;
-    const desgloseCoincide = tieneDesglose && sumaDesglose === totalFinal;
-    const estado = desgloseCoincide ? "REGULARIZADO" : "POR_REGULARIZAR";
+    if (insumoOrObj && typeof insumoOrObj === 'object' && !Array.isArray(insumoOrObj)) {
+      const p = insumoOrObj;
+      insumo      = p.insumo;        pabellon  = p.pabellon;
+      pisoVal     = p.piso;          damasVal  = p.damas ?? 0;
+      varonesVal  = p.varones ?? 0; discapVal = p.discapacitado ?? 0;
+      totalManual = p.cantidadTotal; encNombre = p.encargado;
+      encDni      = p.encargadoDni;  encUid    = p.uid;
+      obs         = p.observaciones || null;
+      if (p.tipo_registro)    camposExtra.tipo_registro    = p.tipo_registro;
+      if (p.area_solicitante) camposExtra.area_solicitante = p.area_solicitante;
+      if (p.ubicacion_exacta) camposExtra.ubicacion_exacta = p.ubicacion_exacta;
+      if (p.cantidad_bidones) camposExtra.cantidad_bidones = p.cantidad_bidones;
+      if (p.forzar_estado)    camposExtra._forzar_estado   = p.forzar_estado;
+    } else {
+      insumo     = insumoOrObj;       pisoVal    = piso;
+      damasVal   = damas;             varonesVal = varones;
+      discapVal  = discapacitado;     totalManual = cantidadTotalManual;
+      encNombre  = encargado;         encDni     = encargadoDni;
+      encUid     = encargadoUid;      obs        = observaciones;
+    }
+
+    const d  = parseInt(damasVal)   || 0;
+    const v  = parseInt(varonesVal) || 0;
+    const dc = parseInt(discapVal)  || 0;
+    const sumaDesglose = d + v + dc;
+    const totalFinal   = parseInt(totalManual) || sumaDesglose;
+    const pisoNum      = pisoVal ? parseInt(pisoVal) : null;
+
+    // Estado: respetar forzar_estado si viene del form Agua
+    let estado;
+    if (camposExtra._forzar_estado) {
+      estado = camposExtra._forzar_estado;
+      delete camposExtra._forzar_estado;
+    } else {
+      const tieneDesglose    = sumaDesglose > 0;
+      const desgloseCoincide = tieneDesglose && sumaDesglose === totalFinal;
+      estado = desgloseCoincide ? "REGULARIZADO" : "POR_REGULARIZAR";
+    }
 
     const registroData = {
       fecha_registro: fechaLocal(),
@@ -58,17 +91,18 @@ export async function registrarEntrega(insumo, pabellon, piso, damas, varones, d
       piso: pisoNum,
       detalle_banos: { damas: d, varones: v, discapacitado: dc },
       estado,
-      encargado: { uid: encargadoUid || null, nombre: encargado, dni: encargadoDni },
-      observaciones: observaciones || null,
+      encargado: { uid: encUid || null, nombre: encNombre, dni: encDni },
+      observaciones: obs || null,
       regularizado_por: null,
       fecha_regularizacion: null,
-      timestamp: serverTimestamp()
+      timestamp: serverTimestamp(),
+      ...camposExtra
     };
 
     const entregasRef = collection(db, REGISTROS_COLECCION);
     const docRef = await addDoc(entregasRef, registroData);
 
-    // Descontar del stock dinámicamente
+    // Descontar del stock
     if (totalFinal > 0) {
       try { await restarStock(insumo, totalFinal); } catch(e) { console.warn("No se pudo actualizar el stock:", e.message); }
     }
