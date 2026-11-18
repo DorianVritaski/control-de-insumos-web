@@ -21,6 +21,9 @@ import { restarStock, sumarStock } from "./catalogos.service.js";
 
 const REGISTROS_COLECCION = "registros_entrega";
 
+// BUG 1 FIX: Protección anti-doble-submit global para registrarEntrega
+let _registrandoEntrega = false;
+
 /**
  * Devuelve la fecha local del dispositivo en formato YYYY-MM-DD.
  * Evita el bug de UTC donde las 23:xx hora local es el día siguiente en UTC.
@@ -39,6 +42,11 @@ function fechaLocal() {
  * El objeto admite campos extra para Agua: tipo_registro, area_solicitante, ubicacion_exacta, cantidad_bidones, forzar_estado.
  */
 export async function registrarEntrega(insumoOrObj, pabellon, piso, damas, varones, discapacitado, cantidadTotalManual, encargado, encargadoDni, encargadoUid, observaciones = null) {
+  // BUG 1 FIX: Protección anti-doble-submit
+  if (_registrandoEntrega) {
+    throw new Error("Ya hay una entrega en proceso. Espere un momento.");
+  }
+  _registrandoEntrega = true;
   try {
     // Soporte dual: objeto o parámetros posicionales
     let insumo, pisoVal, damasVal, varonesVal, discapVal, totalManual, encNombre, encDni, encUid, obs;
@@ -100,17 +108,31 @@ export async function registrarEntrega(insumoOrObj, pabellon, piso, damas, varon
     };
 
     const entregasRef = collection(db, REGISTROS_COLECCION);
-    const docRef = await addDoc(entregasRef, registroData);
 
-    // Descontar del stock
-    if (totalFinal > 0) {
-      try { await restarStock(insumo, totalFinal); } catch(e) { console.warn("No se pudo actualizar el stock:", e.message); }
+    // BUG 1 FIX: Restar stock ANTES de guardar la entrega.
+    // Si restarStock falla, no se guarda nada (stock inconsistente nunca ocurre).
+    const esAgua = registroData.tipo_registro === 'AGUA' || (insumo && insumo.toUpperCase() === 'AGUA');
+    if (!esAgua && totalFinal > 0) {
+      await restarStock(insumo, totalFinal); // lanza si falla → no se llega al addDoc
+    }
+
+    let docRef;
+    try {
+      docRef = await addDoc(entregasRef, registroData);
+    } catch (saveError) {
+      // addDoc falló: revertir el descuento de stock ya realizado
+      if (!esAgua && totalFinal > 0) {
+        try { await sumarStock(insumo, totalFinal); } catch(re) { console.error("Error en rollback de stock:", re); }
+      }
+      throw saveError;
     }
 
     return { id: docRef.id, ...registroData };
   } catch (error) {
     console.error("Error al registrar entrega:", error);
     throw error;
+  } finally {
+    _registrandoEntrega = false;
   }
 }
 
@@ -253,6 +275,8 @@ export async function regularizarEntrega(entregaId, piso, damas, varones, discap
       throw new Error(`Entrega con ID "${entregaId}" no encontrada.`);
     }
 
+    const datosAnteriores = entregaSnap.data();
+    const cantidadAnterior = datosAnteriores.cantidad_total ?? 0;
     const cantidadTotal = damas + varones + discapacitado;
 
     const actualizacion = {
@@ -268,6 +292,22 @@ export async function regularizarEntrega(entregaId, piso, damas, varones, discap
       fecha_regularizacion: fechaLocal()
 
     };
+
+    // BUG 2 FIX: Ajustar stock por la diferencia en cantidad_total (ignorar AGUA)
+    const insumo = datosAnteriores.insumo || '';
+    const esAgua = datosAnteriores.tipo_registro === 'AGUA' || insumo.toUpperCase() === 'AGUA';
+    if (!esAgua) {
+      const diferencia = cantidadTotal - cantidadAnterior;
+      if (diferencia > 0) {
+        // La regularización aumentó la cantidad: descontar diferencia adicional del stock
+        try { await restarStock(insumo, diferencia); }
+        catch(e) { console.warn('Stock no ajustado en regularización (restar):', e.message); }
+      } else if (diferencia < 0) {
+        // La regularización redujo la cantidad: devolver diferencia al stock
+        try { await sumarStock(insumo, Math.abs(diferencia)); }
+        catch(e) { console.warn('Stock no ajustado en regularización (sumar):', e.message); }
+      }
+    }
 
     await updateDoc(entregaRef, actualizacion);
 
@@ -413,12 +453,20 @@ export async function registrarEntregaMultipiso({ fecha, insumo, pabellon, encar
       });
     });
 
-    await batch.commit();
-
-    // Descontar del stock el total global
+    // BUG 3 FIX: Restar stock ANTES del batch.commit().
+    // Si restarStock falla, no se ejecuta el batch → no quedan registros sin descuento de stock.
     if (totalGlobal > 0) {
-      try { await restarStock(insumo, totalGlobal); }
-      catch(e) { console.warn("No se pudo actualizar el stock:", e.message); }
+      await restarStock(insumo, totalGlobal); // lanza si falla → batch no se ejecuta
+    }
+
+    try {
+      await batch.commit();
+    } catch (batchError) {
+      // batch.commit() falló: revertir el stock ya descontado
+      if (totalGlobal > 0) {
+        try { await sumarStock(insumo, totalGlobal); } catch(re) { console.error("Error en rollback de stock multipiso:", re); }
+      }
+      throw batchError;
     }
 
     return { guardados: pisosValidos.length, ids };
