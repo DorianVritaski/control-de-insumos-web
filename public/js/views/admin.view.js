@@ -2,7 +2,7 @@
 // Panel de Control y Configuración
 // Según la especificación Spec_Driven_Development.md
 
-import { filtrarEntregas, regularizarEntrega, actualizarEntrega } from "../services/entregas.service.js";
+import { filtrarEntregas, regularizarEntrega, actualizarEntrega, eliminarEntrega } from "../services/entregas.service.js";
 import {
   getCatalogosCompletos,
   agregarPabellon, actualizarPabellon, eliminarPabellon,
@@ -36,6 +36,7 @@ export function adminView() {
 
       <!-- ===== TAB REGULARIZACIÓN ===== -->
       <div class="tab-panel p-6" id="tab-regularizacion">
+        <div id="alert-regularizacion"></div>
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
           <div><label class="block text-xs font-semibold text-slate-500 mb-1 uppercase">Fecha Inicio</label>
             <input type="date" id="filtro-fecha-inicio" class="form-input text-sm"></div>
@@ -61,6 +62,27 @@ export function adminView() {
             <thead><tr><th>Fecha</th><th>Insumo</th><th>Pabellón</th><th>Piso</th><th>Damas</th><th>Varones</th><th>Discap.</th><th>Total</th><th>Encargado</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody id="tbody-regularizacion"><tr><td colspan="11" class="text-center text-slate-400 py-8">Cargando...</td></tr></tbody>
           </table>
+        </div>
+
+        <!-- Tabla Agua en Regularización -->
+        <div class="mt-8 border-t border-slate-200 pt-6">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-xl">💧</span>
+            <h4 class="font-bold text-slate-700 text-base">Entregas de Agua</h4>
+            <span id="reg-agua-count" class="ml-2 text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full"></span>
+          </div>
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr style="background:linear-gradient(135deg,#0ea5e9,#0284c7);">
+                  <th>Fecha</th><th>Área Solicitante</th><th>Pabellón</th><th>Piso</th><th>Ubicación Exacta</th><th>Bidones</th><th>Encargado</th><th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-reg-agua">
+                <tr><td colspan="8" class="text-center text-slate-400 py-6">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -288,6 +310,33 @@ export function adminView() {
           </table>
         </div>
         <p id="exp-count" class="text-xs text-slate-400 mt-3"></p>
+
+        <!-- Tabla especial Agua -->
+        <div class="mt-8 border-t border-slate-200 pt-6">
+          <div class="flex items-center justify-between mb-3 flex-wrap gap-3">
+            <div class="flex items-center gap-2">
+              <span class="text-xl">💧</span>
+              <h4 class="font-bold text-slate-700 text-base">Entregas de Agua</h4>
+              <span id="exp-agua-count" class="text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full"></span>
+            </div>
+            <div class="flex gap-2">
+              <button id="btn-exp-agua-excel" class="btn text-sm text-white font-semibold" style="background:#217346;">📥 Excel Agua</button>
+              <button id="btn-exp-agua-pdf"   class="btn text-sm text-white font-semibold" style="background:#c0392b;">📄 PDF Agua</button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table id="tabla-export-agua">
+              <thead>
+                <tr style="background:linear-gradient(135deg,#0ea5e9,#0284c7);">
+                  <th>Fecha</th><th>Insumo</th><th>Bidones</th><th>Área Solicitante</th><th>Pabellón</th><th>Piso</th><th>Ubicación Exacta</th><th>Encargado</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-export-agua">
+                <tr><td colspan="8" class="text-center text-slate-400 py-8">Aplica los filtros y presiona "Buscar".</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -361,6 +410,57 @@ export function adminView() {
         <div class="flex gap-3 mt-6">
           <button id="btn-confirmar-reg" class="btn btn-primary flex-1">✓ Confirmar</button>
           <button id="btn-cancelar-reg"  class="btn btn-secondary flex-1">✕ Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Editar Registro (Regularización) -->
+    <div id="modal-edit-registro" class="fixed inset-0 z-50 hidden items-center justify-center" style="background:rgba(15,23,42,0.5);">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 max-h-screen overflow-y-auto">
+        <h3 class="text-lg font-bold text-slate-800 mb-1">✏️ Editar Registro</h3>
+        <p class="text-xs text-slate-400 mb-4">Modifica los datos del registro seleccionado.</p>
+        <div id="alert-modal-edit-reg"></div>
+        <input type="hidden" id="edit-reg-id">
+        <div class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase">Fecha</label>
+              <input type="date" id="edit-reg-fecha" class="form-input text-sm">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase">Piso</label>
+              <input type="number" id="edit-reg-piso" class="form-input text-sm" min="1" style="max-width:100px;">
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div><label class="block text-xs text-slate-400 mb-1">👩 Damas</label><input type="number" id="edit-reg-damas" class="form-input text-center text-sm" min="0" value="0"></div>
+            <div><label class="block text-xs text-slate-400 mb-1">👨 Varones</label><input type="number" id="edit-reg-varones" class="form-input text-center text-sm" min="0" value="0"></div>
+            <div><label class="block text-xs text-slate-400 mb-1">♿ Discap.</label><input type="number" id="edit-reg-discap" class="form-input text-center text-sm" min="0" value="0"></div>
+          </div>
+          <div class="p-3 bg-violet-50 rounded-lg border border-violet-200 flex justify-between items-center">
+            <span class="text-sm text-violet-600 font-semibold">Total calculado:</span>
+            <span id="edit-reg-total" class="text-2xl font-extrabold text-violet-700">0</span>
+          </div>
+        </div>
+        <div class="flex gap-3 mt-6">
+          <button id="btn-confirmar-edit-reg" class="btn btn-primary flex-1">💾 Guardar Cambios</button>
+          <button id="btn-cancelar-edit-reg"  class="btn btn-secondary flex-1">✕ Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Confirmar Eliminación -->
+    <div id="modal-confirm-delete" class="fixed inset-0 z-50 hidden items-center justify-center" style="background:rgba(15,23,42,0.6);">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 text-center">
+        <div class="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg class="w-7 h-7 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </div>
+        <h3 class="text-lg font-bold text-slate-800 mb-2">¿Eliminar registro?</h3>
+        <p class="text-sm text-slate-500 mb-6" id="delete-confirm-msg">Esta acción no se puede deshacer.</p>
+        <input type="hidden" id="delete-reg-id">
+        <div class="flex gap-3">
+          <button id="btn-confirmar-delete" class="btn flex-1 text-white font-semibold" style="background:#dc2626;">🗑️ Eliminar</button>
+          <button id="btn-cancelar-delete"  class="btn btn-secondary flex-1">✕ Cancelar</button>
         </div>
       </div>
     </div>
@@ -903,6 +1003,7 @@ async function initAdminView(container) {
 
   // ====== REGULARIZACIÓN ======
   const tbodyReg = container.querySelector('#tbody-regularizacion');
+  const tbodyRegAgua = container.querySelector('#tbody-reg-agua');
   let entregaIdPendiente = null;
   const regDamas = container.querySelector('#reg-damas');
   const regVarones = container.querySelector('#reg-varones');
@@ -930,31 +1031,149 @@ async function initAdminView(container) {
     finally { btn.disabled = false; btn.textContent = '✓ Confirmar'; }
   });
 
-  async function cargarEntregas(filtros = {}) {
-    tbodyReg.innerHTML = '<tr><td colspan="11" class="text-center text-slate-400 py-8">Cargando...</td></tr>';
+  // -- Modal Editar Registro --
+  const editRegDamas   = container.querySelector('#edit-reg-damas');
+  const editRegVarones = container.querySelector('#edit-reg-varones');
+  const editRegDiscap  = container.querySelector('#edit-reg-discap');
+  const editRegTotal   = container.querySelector('#edit-reg-total');
+  function actualizarTotalEditReg() { editRegTotal.textContent = (parseInt(editRegDamas.value)||0) + (parseInt(editRegVarones.value)||0) + (parseInt(editRegDiscap.value)||0); }
+  [editRegDamas, editRegVarones, editRegDiscap].forEach(i => i.addEventListener('input', actualizarTotalEditReg));
+
+  function abrirModalEditReg(entrega) {
+    const det = entrega.detalle_banos || {};
+    container.querySelector('#edit-reg-id').value       = entrega.id;
+    container.querySelector('#edit-reg-fecha').value    = entrega.fecha_registro || '';
+    container.querySelector('#edit-reg-piso').value     = entrega.piso ?? '';
+    editRegDamas.value   = det.damas ?? 0;
+    editRegVarones.value = det.varones ?? 0;
+    editRegDiscap.value  = det.discapacitado ?? 0;
+    actualizarTotalEditReg();
+    container.querySelector('#alert-modal-edit-reg').innerHTML = '';
+    container.querySelector('#modal-edit-registro').style.display = 'flex';
+    container.querySelector('#modal-edit-registro').classList.remove('hidden');
+  }
+  function cerrarModalEditReg() {
+    container.querySelector('#modal-edit-registro').style.display = '';
+    container.querySelector('#modal-edit-registro').classList.add('hidden');
+  }
+  container.querySelector('#btn-cancelar-edit-reg').addEventListener('click', cerrarModalEditReg);
+  container.querySelector('#btn-confirmar-edit-reg').addEventListener('click', async () => {
+    const id    = container.querySelector('#edit-reg-id').value;
+    const fecha = container.querySelector('#edit-reg-fecha').value;
+    const piso  = parseInt(container.querySelector('#edit-reg-piso').value) || null;
+    const d = parseInt(editRegDamas.value)||0, v = parseInt(editRegVarones.value)||0, dc = parseInt(editRegDiscap.value)||0;
+    const btn = container.querySelector('#btn-confirmar-edit-reg');
+    btn.disabled = true; btn.textContent = 'Guardando...';
     try {
-      const entregas = await filtrarEntregas(filtros.fechaInicio, filtros.fechaFin, filtros.insumo, filtros.pabellon, filtros.estado);
-      tbodyReg.innerHTML = '';
-      if (!entregas.length) { tbodyReg.innerHTML = '<tr><td colspan="11" class="text-center text-slate-400 py-8">No hay entregas.</td></tr>'; return; }
-      entregas.forEach(e => {
-        const esReg = e.estado === 'REGULARIZADO'; const det = e.detalle_banos || {};
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="text-sm">${e.fecha_registro}</td>
-          <td class="text-sm font-medium">${(e.insumo || '').replace(/_/g, ' ')}</td>
-          <td class="text-sm">${e.pabellon || '-'}</td>
-          <td class="text-sm text-center">${e.piso ?? '-'}</td>
-          <td class="text-sm text-center">${det.damas ?? '-'}</td>
-          <td class="text-sm text-center">${det.varones ?? '-'}</td>
-          <td class="text-sm text-center">${det.discapacitado ?? '-'}</td>
-          <td class="text-sm text-center font-bold">${e.cantidad_total ?? '-'}</td>
-          <td class="text-sm">${e.encargado?.nombre || '-'}</td>
-          <td><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${esReg ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${esReg ? '✓ Reg.' : '⏳ Pend.'}</span></td>
-          <td>${!esReg ? `<button class="btn-reg text-xs px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold" data-id="${e.id}">Regularizar</button>` : '<span class="text-slate-300 text-xs">—</span>'}</td>`;
-        tbodyReg.appendChild(tr);
+      await actualizarEntrega(id, {
+        fecha_registro: fecha,
+        piso,
+        detalle_banos: { damas: d, varones: v, discapacitado: dc },
+        cantidad_total: d + v + dc
       });
-      container.querySelectorAll('.btn-reg').forEach(btn => btn.addEventListener('click', () => abrirModalReg(btn.dataset.id)));
-    } catch (err) { tbodyReg.innerHTML = '<tr><td colspan="11" class="text-center text-red-400 py-8">Error al cargar.</td></tr>'; }
+      cerrarModalEditReg(); cargarEntregas(getFiltros());
+      showAlert('#alert-regularizacion', '✅ Registro actualizado.');
+    } catch (err) {
+      container.querySelector('#alert-modal-edit-reg').innerHTML = `<div class="alert alert-error mb-3">❌ ${err.message}</div>`;
+    } finally { btn.disabled = false; btn.textContent = '💾 Guardar Cambios'; }
+  });
+
+  // -- Modal Eliminar Registro --
+  function abrirModalDelete(id, descripcion = '') {
+    container.querySelector('#delete-reg-id').value = id;
+    container.querySelector('#delete-confirm-msg').textContent = `Se eliminará: ${descripcion}. Esta acción no se puede deshacer.`;
+    container.querySelector('#modal-confirm-delete').style.display = 'flex';
+    container.querySelector('#modal-confirm-delete').classList.remove('hidden');
+  }
+  function cerrarModalDelete() {
+    container.querySelector('#modal-confirm-delete').style.display = '';
+    container.querySelector('#modal-confirm-delete').classList.add('hidden');
+  }
+  container.querySelector('#btn-cancelar-delete').addEventListener('click', cerrarModalDelete);
+  container.querySelector('#btn-confirmar-delete').addEventListener('click', async () => {
+    const id  = container.querySelector('#delete-reg-id').value;
+    const btn = container.querySelector('#btn-confirmar-delete');
+    btn.disabled = true; btn.textContent = 'Eliminando...';
+    try {
+      await eliminarEntrega(id);
+      cerrarModalDelete(); cargarEntregas(getFiltros());
+      showAlert('#alert-regularizacion', '✅ Registro eliminado.');
+    } catch (err) { alert('❌ Error: ' + err.message); }
+    finally { btn.disabled = false; btn.textContent = '🗑️ Eliminar'; }
+  });
+
+  async function cargarEntregas(filtros = {}) {
+    tbodyReg.innerHTML     = '<tr><td colspan="11" class="text-center text-slate-400 py-8">Cargando...</td></tr>';
+    tbodyRegAgua.innerHTML = '<tr><td colspan="8" class="text-center text-slate-400 py-6">Cargando...</td></tr>';
+    try {
+      const todasEntregas = await filtrarEntregas(filtros.fechaInicio, filtros.fechaFin, filtros.insumo, filtros.pabellon, filtros.estado);
+      const entregasAgua    = todasEntregas.filter(e => e.tipo_registro === 'AGUA' || (e.insumo || '').toUpperCase() === 'AGUA');
+      const entregas        = todasEntregas.filter(e => e.tipo_registro !== 'AGUA' && (e.insumo || '').toUpperCase() !== 'AGUA');
+
+      // ---- Tabla normal ----
+      tbodyReg.innerHTML = '';
+      if (!entregas.length) {
+        tbodyReg.innerHTML = '<tr><td colspan="11" class="text-center text-slate-400 py-8">No hay entregas.</td></tr>';
+      } else {
+        entregas.forEach(e => {
+          const esReg = e.estado === 'REGULARIZADO'; const det = e.detalle_banos || {};
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="text-sm">${e.fecha_registro}</td>
+            <td class="text-sm font-medium">${(e.insumo || '').replace(/_/g, ' ')}</td>
+            <td class="text-sm">${e.pabellon || '-'}</td>
+            <td class="text-sm text-center">${e.piso ?? '-'}</td>
+            <td class="text-sm text-center">${det.damas ?? '-'}</td>
+            <td class="text-sm text-center">${det.varones ?? '-'}</td>
+            <td class="text-sm text-center">${det.discapacitado ?? '-'}</td>
+            <td class="text-sm text-center font-bold">${e.cantidad_total ?? '-'}</td>
+            <td class="text-sm">${e.encargado?.nombre || '-'}</td>
+            <td><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${esReg ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${esReg ? '✓ Reg.' : '⏳ Pend.'}</span></td>
+            <td class="whitespace-nowrap">
+              <div class="flex gap-1 items-center">
+                ${!esReg ? `<button class="btn-reg text-xs px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold" data-id="${e.id}">⚙️ Reg.</button>` : ''}
+                <button class="btn-edit-reg text-xs px-2.5 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold" data-id="${e.id}">✏️</button>
+                <button class="btn-del-reg text-xs px-2.5 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold" data-id="${e.id}" data-desc="${e.fecha_registro} | ${(e.insumo||'').replace(/_/g,' ')} | ${e.pabellon||'-'}">🗑️</button>
+              </div>
+            </td>`;
+          tbodyReg.appendChild(tr);
+        });
+        container.querySelectorAll('.btn-reg').forEach(btn => btn.addEventListener('click', () => abrirModalReg(btn.dataset.id)));
+        container.querySelectorAll('.btn-edit-reg').forEach(btn => btn.addEventListener('click', () => {
+          const entrega = entregas.find(x => x.id === btn.dataset.id);
+          if (entrega) abrirModalEditReg(entrega);
+        }));
+        container.querySelectorAll('.btn-del-reg').forEach(btn => btn.addEventListener('click', () => abrirModalDelete(btn.dataset.id, btn.dataset.desc)));
+      }
+
+      // ---- Tabla Agua ----
+      const countEl = container.querySelector('#reg-agua-count');
+      if (countEl) countEl.textContent = entregasAgua.length ? `${entregasAgua.length} registro(s)` : '';
+      tbodyRegAgua.innerHTML = '';
+      if (!entregasAgua.length) {
+        tbodyRegAgua.innerHTML = '<tr><td colspan="8" class="text-center text-slate-400 py-6">Sin entregas de Agua.</td></tr>';
+      } else {
+        entregasAgua.forEach(e => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="text-sm">${e.fecha_registro}</td>
+            <td class="text-sm font-medium text-blue-700">${e.area_solicitante || '-'}</td>
+            <td class="text-sm">${e.pabellon || '-'}</td>
+            <td class="text-sm text-center">${e.piso ?? '-'}</td>
+            <td class="text-sm">${e.ubicacion_exacta || '-'}</td>
+            <td class="text-sm text-center font-bold text-blue-700">${e.cantidad_bidones ?? e.cantidad_total ?? '-'} 🫙</td>
+            <td class="text-sm">${e.encargado?.nombre || '-'}</td>
+            <td>
+              <button class="btn-del-agua text-xs px-2.5 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold" data-id="${e.id}" data-desc="${e.fecha_registro} | Agua | ${e.pabellon||'-'}">🗑️</button>
+            </td>`;
+          tbodyRegAgua.appendChild(tr);
+        });
+        container.querySelectorAll('.btn-del-agua').forEach(btn => btn.addEventListener('click', () => abrirModalDelete(btn.dataset.id, btn.dataset.desc)));
+      }
+    } catch (err) {
+      tbodyReg.innerHTML     = '<tr><td colspan="11" class="text-center text-red-400 py-8">Error al cargar.</td></tr>';
+      tbodyRegAgua.innerHTML = '<tr><td colspan="8" class="text-center text-red-400 py-6">Error al cargar.</td></tr>';
+    }
   }
 
   function getFiltros() {
@@ -1012,25 +1231,70 @@ async function initAdminView(container) {
   cargarUsuarios();
 
   // ====== EXPORTAR ======
+  let entregasExportAgua = [];
+
   async function cargarExport() {
-    const tbody = container.querySelector('#tbody-export');
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-slate-400 py-8">Cargando...</td></tr>';
-    const filtros = { fechaInicio: container.querySelector('#exp-fecha-inicio').value || null, fechaFin: container.querySelector('#exp-fecha-fin').value || null, insumo: container.querySelector('#exp-insumo').value || null, pabellon: container.querySelector('#exp-pabellon').value || null };
+    const tbody     = container.querySelector('#tbody-export');
+    const tbodyAgua = container.querySelector('#tbody-export-agua');
+    const countAgua = container.querySelector('#exp-agua-count');
+    tbody.innerHTML     = '<tr><td colspan="10" class="text-center text-slate-400 py-8">Cargando...</td></tr>';
+    tbodyAgua.innerHTML = '<tr><td colspan="8" class="text-center text-slate-400 py-8">Cargando...</td></tr>';
+    const filtros = {
+      fechaInicio: container.querySelector('#exp-fecha-inicio').value || null,
+      fechaFin:    container.querySelector('#exp-fecha-fin').value    || null,
+      insumo:      container.querySelector('#exp-insumo').value       || null,
+      pabellon:    container.querySelector('#exp-pabellon').value     || null
+    };
     try {
-      entregasExport = await filtrarEntregas(filtros.fechaInicio, filtros.fechaFin, filtros.insumo, filtros.pabellon);
+      const todas = await filtrarEntregas(filtros.fechaInicio, filtros.fechaFin, filtros.insumo, filtros.pabellon);
+
+      // Separar Agua del resto
+      entregasExportAgua = todas.filter(e => e.tipo_registro === 'AGUA' || (e.insumo || '').toUpperCase() === 'AGUA');
+      entregasExport     = todas.filter(e => e.tipo_registro !== 'AGUA' && (e.insumo || '').toUpperCase() !== 'AGUA');
+
+      // ---- Tabla normal ----
       tbody.innerHTML = '';
-      if (!entregasExport.length) { tbody.innerHTML = '<tr><td colspan="10" class="text-center text-slate-400 py-8">Sin resultados.</td></tr>'; container.querySelector('#exp-count').textContent = ''; return; }
-      entregasExport.forEach(e => {
-        const det = e.detalle_banos || {};
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td class="text-sm">${e.fecha_registro}</td><td class="text-sm font-medium">${(e.insumo || '').replace(/_/g, ' ')}</td><td class="text-sm">${e.pabellon || '-'}</td><td class="text-sm text-center">${e.piso ?? '-'}</td><td class="text-sm text-center">${det.damas ?? 0}</td><td class="text-sm text-center">${det.varones ?? 0}</td><td class="text-sm text-center">${det.discapacitado ?? 0}</td><td class="text-sm text-center font-bold">${e.cantidad_total ?? 0}</td><td><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${e.estado === 'REGULARIZADO' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${e.estado}</span></td><td class="text-sm">${e.encargado?.nombre || '-'}</td>`;
-        tbody.appendChild(tr);
-      });
-      container.querySelector('#exp-count').textContent = `${entregasExport.length} registro(s) encontrado(s).`;
-    } catch (err) { tbody.innerHTML = '<tr><td colspan="10" class="text-center text-red-400 py-8">Error al cargar.</td></tr>'; }
+      if (!entregasExport.length) {
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-slate-400 py-8">Sin resultados.</td></tr>';
+        container.querySelector('#exp-count').textContent = '';
+      } else {
+        entregasExport.forEach(e => {
+          const det = e.detalle_banos || {};
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td class="text-sm">${e.fecha_registro}</td><td class="text-sm font-medium">${(e.insumo || '').replace(/_/g, ' ')}</td><td class="text-sm">${e.pabellon || '-'}</td><td class="text-sm text-center">${e.piso ?? '-'}</td><td class="text-sm text-center">${det.damas ?? 0}</td><td class="text-sm text-center">${det.varones ?? 0}</td><td class="text-sm text-center">${det.discapacitado ?? 0}</td><td class="text-sm text-center font-bold">${e.cantidad_total ?? 0}</td><td><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${e.estado === 'REGULARIZADO' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${e.estado}</span></td><td class="text-sm">${e.encargado?.nombre || '-'}</td>`;
+          tbody.appendChild(tr);
+        });
+        container.querySelector('#exp-count').textContent = `${entregasExport.length} registro(s) encontrado(s).`;
+      }
+
+      // ---- Tabla Agua ----
+      tbodyAgua.innerHTML = '';
+      if (countAgua) countAgua.textContent = entregasExportAgua.length ? `${entregasExportAgua.length} registro(s)` : '';
+      if (!entregasExportAgua.length) {
+        tbodyAgua.innerHTML = '<tr><td colspan="8" class="text-center text-slate-400 py-8">Sin entregas de Agua.</td></tr>';
+      } else {
+        entregasExportAgua.forEach(e => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="text-sm">${e.fecha_registro}</td>
+            <td class="text-sm font-medium">${(e.insumo || '').replace(/_/g, ' ')}</td>
+            <td class="text-sm text-center font-bold text-blue-700">${e.cantidad_bidones ?? e.cantidad_total ?? '-'}</td>
+            <td class="text-sm font-medium">${e.area_solicitante || '-'}</td>
+            <td class="text-sm">${e.pabellon || '-'}</td>
+            <td class="text-sm text-center">${e.piso ?? '-'}</td>
+            <td class="text-sm">${e.ubicacion_exacta || '-'}</td>
+            <td class="text-sm">${e.encargado?.nombre || '-'}</td>`;
+          tbodyAgua.appendChild(tr);
+        });
+      }
+    } catch (err) {
+      tbody.innerHTML     = '<tr><td colspan="10" class="text-center text-red-400 py-8">Error al cargar.</td></tr>';
+      tbodyAgua.innerHTML = '<tr><td colspan="8" class="text-center text-red-400 py-8">Error al cargar.</td></tr>';
+    }
   }
   container.querySelector('#btn-exp-filtrar').addEventListener('click', cargarExport);
 
+  // Exportar Excel normal
   container.querySelector('#btn-exp-excel').addEventListener('click', () => {
     if (!entregasExport.length) return alert('Primero realiza una búsqueda.');
     const header = ['FECHA', 'INSUMO', 'PABELLON', 'PISO', 'DAMAS', 'VARONES', 'DISCAPACITADO', 'TOTAL', 'ESTADO', 'ENCARGADO'];
@@ -1041,10 +1305,30 @@ async function initAdminView(container) {
     document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
   });
 
+  // Exportar PDF normal
   container.querySelector('#btn-exp-pdf').addEventListener('click', () => {
     if (!entregasExport.length) return alert('Primero realiza una búsqueda.');
     const filas = entregasExport.map(e => { const det = e.detalle_banos || {}; return `<tr><td>${e.fecha_registro}</td><td>${(e.insumo || '').replace(/_/g, ' ')}</td><td>${e.pabellon || '-'}</td><td>${e.piso ?? '-'}</td><td>${det.damas ?? 0}</td><td>${det.varones ?? 0}</td><td>${det.discapacitado ?? 0}</td><td><b>${e.cantidad_total ?? 0}</b></td><td>${e.estado}</td><td>${e.encargado?.nombre || '-'}</td></tr>`; }).join('');
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Reporte de Entregas</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px}h2{color:#0d9488}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px 8px;text-align:center}th{background:#0d9488;color:#fff}tr:nth-child(even){background:#f8fafc}</style></head><body><h2>Reporte de Entregas — PAB-IN</h2><p>Generado el ${new Date().toLocaleString('es-PE')}</p><table><thead><tr><th>FECHA</th><th>INSUMO</th><th>PABELLÓN</th><th>PISO</th><th>DAMAS</th><th>VARONES</th><th>DISCAP.</th><th>TOTAL</th><th>ESTADO</th><th>ENCARGADO</th></tr></thead><tbody>${filas}</tbody></table></body></html>`;
+    const w = window.open('', '_blank', 'width=1100,height=700'); w.document.write(html); w.document.close(); setTimeout(() => { w.focus(); w.print(); }, 500);
+  });
+
+  // Exportar Excel Agua
+  container.querySelector('#btn-exp-agua-excel').addEventListener('click', () => {
+    if (!entregasExportAgua.length) return alert('No hay registros de Agua para exportar.');
+    const header = ['FECHA', 'INSUMO', 'CANTIDAD BIDONES', 'AREA SOLICITANTE', 'PABELLON', 'PISO', 'UBICACION EXACTA', 'ENCARGADO'];
+    const rows = entregasExportAgua.map(e => [e.fecha_registro, e.insumo, e.cantidad_bidones ?? e.cantidad_total ?? '', e.area_solicitante || '', e.pabellon || '', e.piso ?? '', e.ubicacion_exacta || '', e.encargado?.nombre || '']);
+    const csv = '\uFEFF' + [header, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `entregas_agua_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  });
+
+  // Exportar PDF Agua
+  container.querySelector('#btn-exp-agua-pdf').addEventListener('click', () => {
+    if (!entregasExportAgua.length) return alert('No hay registros de Agua para exportar.');
+    const filas = entregasExportAgua.map(e => `<tr><td>${e.fecha_registro}</td><td>${(e.insumo||'').replace(/_/g,' ')}</td><td><b>${e.cantidad_bidones ?? e.cantidad_total ?? '-'}</b></td><td>${e.area_solicitante||'-'}</td><td>${e.pabellon||'-'}</td><td>${e.piso??'-'}</td><td>${e.ubicacion_exacta||'-'}</td><td>${e.encargado?.nombre||'-'}</td></tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Reporte Agua</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px}h2{color:#0284c7}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px 8px;text-align:center}th{background:#0284c7;color:#fff}tr:nth-child(even){background:#f0f9ff}</style></head><body><h2>💧 Reporte de Entregas de Agua — PAB-IN</h2><p>Generado el ${new Date().toLocaleString('es-PE')}</p><table><thead><tr><th>FECHA</th><th>INSUMO</th><th>BIDONES</th><th>ÁREA SOLICITANTE</th><th>PABELLÓN</th><th>PISO</th><th>UBICACIÓN EXACTA</th><th>ENCARGADO</th></tr></thead><tbody>${filas}</tbody></table></body></html>`;
     const w = window.open('', '_blank', 'width=1100,height=700'); w.document.write(html); w.document.close(); setTimeout(() => { w.focus(); w.print(); }, 500);
   });
 }

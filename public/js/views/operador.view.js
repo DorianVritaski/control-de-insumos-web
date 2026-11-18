@@ -258,7 +258,7 @@ export function operadorView() {
           </div>
         </div>
 
-        <!-- Tabla de registros -->
+        <!-- Tabla insumos normales -->
         <div class="table-responsive">
           <table>
             <thead>
@@ -272,6 +272,32 @@ export function operadorView() {
               <tr><td colspan="10" class="text-center text-slate-400 py-8">Cargando registros...</td></tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Tabla especial Agua -->
+        <div class="mt-8">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-xl">💧</span>
+            <h4 class="font-bold text-slate-700 text-base">Entregas de Agua</h4>
+            <span id="agua-hist-count" class="ml-2 text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full"></span>
+          </div>
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr style="background:linear-gradient(135deg,#0ea5e9,#0284c7);">
+                  <th>Fecha</th>
+                  <th>Área Solicitante</th>
+                  <th>Pabellón</th>
+                  <th>Piso</th>
+                  <th>Ubicación Exacta</th>
+                  <th>Bidones</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-historial-agua">
+                <tr><td colspan="6" class="text-center text-slate-400 py-6">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -526,6 +552,20 @@ export function operadorView() {
         aguaForm.classList.add('hidden');
       }
     });
+
+    // Si el usuario cambia el insumo DESDE el formulario de Agua → volver al form normal
+    const aguaInsumoSel = container.querySelector('#agua-insumo');
+    if (aguaInsumoSel) {
+      aguaInsumoSel.addEventListener('change', () => {
+        if (!esSelectorAgua(aguaInsumoSel.value)) {
+          // Sincronizar selección al selector principal y mostrar formulario normal
+          insumoSel.value = aguaInsumoSel.value;
+          aguaForm.classList.add('hidden');
+          registroForm.classList.remove('hidden');
+          actualizarTotal();
+        }
+      });
+    }
 
     // ====== CÁlCULO / VALIDACIÓN TOTAL ======
     const cantTotalInput = container.querySelector("#cantidadTotal");
@@ -1016,6 +1056,9 @@ export function operadorView() {
         </div>`;
         setTimeout(() => { alertContainer.innerHTML = ''; }, 6000);
         container.querySelector("#registro-form").reset();
+        // Restaurar encargado y DNI (el reset los borra)
+        encargado.value    = currentUser?.nombre_completo || currentUser?.displayName || '';
+        encargadoDni.value = currentUser?.dni || '';
         damas.value='0'; varones.value='0'; discapacitado.value='0'; cantTotalInput.value='0';
         totalEditadoManualmente = false;
         alertaDesglose.className = 'text-xs mt-2 hidden'; alertaDesglose.textContent = '';
@@ -1032,38 +1075,72 @@ export function operadorView() {
     const hoy = new Date().toISOString().split('T')[0];
 
     async function cargarHistorial(fechaFiltro = null) {
-      const tbody = container.querySelector('#tbody-historial');
-      tbody.innerHTML = '<tr><td colspan="10" class="text-center text-slate-400 py-8">Cargando...</td></tr>';
+      const tbody      = container.querySelector('#tbody-historial');
+      const tbodyAgua  = container.querySelector('#tbody-historial-agua');
+      const countAgua  = container.querySelector('#agua-hist-count');
+      tbody.innerHTML     = '<tr><td colspan="10" class="text-center text-slate-400 py-8">Cargando...</td></tr>';
+      tbodyAgua.innerHTML = '<tr><td colspan="6" class="text-center text-slate-400 py-6">Cargando...</td></tr>';
       try {
         if (!currentUser) return;
         let entregas = await obtenerEntregasDelOperador(currentUser.uid);
         if (fechaFiltro) entregas = entregas.filter(e => e.fecha_registro === fechaFiltro);
+
+        // Separar Agua del resto
+        const entregasAgua    = entregas.filter(e => e.tipo_registro === 'AGUA' || (e.insumo || '').toUpperCase() === 'AGUA');
+        const entregasNormal  = entregas.filter(e => e.tipo_registro !== 'AGUA' && (e.insumo || '').toUpperCase() !== 'AGUA');
+
+        // ---- Tabla normal ----
         tbody.innerHTML = '';
-        if (!entregas.length) { tbody.innerHTML = '<tr><td colspan="10" class="text-center text-slate-400 py-8">Sin registros.</td></tr>'; return; }
-        entregas.forEach(e => {
-          const det = e.detalle_banos || {};
-          const esHoy = e.fecha_registro === hoy;
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td class="text-sm">${e.fecha_registro}</td>
-            <td class="text-sm font-medium">${(e.insumo||'').replace(/_/g,' ')}</td>
-            <td class="text-sm">${e.pabellon||'-'}</td>
-            <td class="text-sm text-center">${e.piso??'-'}</td>
-            <td class="text-sm text-center">${det.damas??0}</td>
-            <td class="text-sm text-center">${det.varones??0}</td>
-            <td class="text-sm text-center">${det.discapacitado??0}</td>
-            <td class="text-sm text-center font-bold">${e.cantidad_total??0}</td>
-            <td><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${e.estado==='REGULARIZADO'?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${e.estado==='REGULARIZADO'?'✓ Regular.':'⏳ Pend.'}</span></td>
-            <td>${esHoy ? `<button class="btn-editar text-xs px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold" data-id="${e.id}">✏️ Editar</button>` : '<span class="text-slate-300 text-xs">—</span>'}</td>`;
-          tbody.appendChild(tr);
-        });
-        container.querySelectorAll('.btn-editar').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const entrega = entregas.find(x => x.id === btn.dataset.id);
-            if (entrega) abrirModalEditar(entrega);
+        if (!entregasNormal.length) {
+          tbody.innerHTML = '<tr><td colspan="10" class="text-center text-slate-400 py-8">Sin registros.</td></tr>';
+        } else {
+          entregasNormal.forEach(e => {
+            const det = e.detalle_banos || {};
+            const esHoy = e.fecha_registro === hoy;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td class="text-sm">${e.fecha_registro}</td>
+              <td class="text-sm font-medium">${(e.insumo||'').replace(/_/g,' ')}</td>
+              <td class="text-sm">${e.pabellon||'-'}</td>
+              <td class="text-sm text-center">${e.piso??'-'}</td>
+              <td class="text-sm text-center">${det.damas??0}</td>
+              <td class="text-sm text-center">${det.varones??0}</td>
+              <td class="text-sm text-center">${det.discapacitado??0}</td>
+              <td class="text-sm text-center font-bold">${e.cantidad_total??0}</td>
+              <td><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${e.estado==='REGULARIZADO'?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${e.estado==='REGULARIZADO'?'✓ Regular.':'⏳ Pend.'}</span></td>
+              <td><button class="btn-editar text-xs px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold" data-id="${e.id}">✏️ Editar</button></td>`;
+            tbody.appendChild(tr);
           });
-        });
-      } catch(err) { tbody.innerHTML = '<tr><td colspan="10" class="text-center text-red-400 py-8">Error al cargar.</td></tr>'; }
+          container.querySelectorAll('.btn-editar').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const entrega = entregasNormal.find(x => x.id === btn.dataset.id);
+              if (entrega) abrirModalEditar(entrega);
+            });
+          });
+        }
+
+        // ---- Tabla Agua ----
+        tbodyAgua.innerHTML = '';
+        if (countAgua) countAgua.textContent = entregasAgua.length ? `${entregasAgua.length} registro(s)` : '';
+        if (!entregasAgua.length) {
+          tbodyAgua.innerHTML = '<tr><td colspan="6" class="text-center text-slate-400 py-6">Sin entregas de Agua.</td></tr>';
+        } else {
+          entregasAgua.forEach(e => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td class="text-sm">${e.fecha_registro}</td>
+              <td class="text-sm font-medium text-blue-700">${e.area_solicitante || '-'}</td>
+              <td class="text-sm">${e.pabellon || '-'}</td>
+              <td class="text-sm text-center">${e.piso ?? '-'}</td>
+              <td class="text-sm">${e.ubicacion_exacta || '-'}</td>
+              <td class="text-sm text-center font-bold text-blue-700">${e.cantidad_bidones ?? e.cantidad_total ?? '-'} 🫙</td>`;
+            tbodyAgua.appendChild(tr);
+          });
+        }
+      } catch(err) {
+        tbody.innerHTML     = '<tr><td colspan="10" class="text-center text-red-400 py-8">Error al cargar.</td></tr>';
+        tbodyAgua.innerHTML = '<tr><td colspan="6" class="text-center text-red-400 py-6">Error al cargar.</td></tr>';
+      }
     }
 
     container.querySelector('#btn-hist-filtrar').addEventListener('click', () => {

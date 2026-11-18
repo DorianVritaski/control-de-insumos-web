@@ -17,7 +17,7 @@ import {
   serverTimestamp,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { restarStock } from "./catalogos.service.js";
+import { restarStock, sumarStock } from "./catalogos.service.js";
 
 const REGISTROS_COLECCION = "registros_entrega";
 
@@ -289,6 +289,31 @@ export async function regularizarEntrega(entregaId, piso, damas, varones, discap
 export async function actualizarEntrega(entregaId, datos) {
   try {
     const entregaRef = doc(db, REGISTROS_COLECCION, entregaId);
+
+    // Ajuste de stock si cambia la cantidad total
+    if (datos.cantidad_total !== undefined) {
+      const snap = await getDoc(entregaRef);
+      if (snap.exists()) {
+        const actual = snap.data();
+        const insumo = actual.insumo || '';
+        const esAgua = actual.tipo_registro === 'AGUA' || insumo.toUpperCase() === 'AGUA';
+        if (!esAgua) {
+          const totalAnterior = actual.cantidad_total ?? 0;
+          const totalNuevo    = datos.cantidad_total ?? 0;
+          const diferencia    = totalNuevo - totalAnterior; // + = se entregó más, - = se entregó menos
+          if (diferencia > 0) {
+            // Se registró más entrega: descontar diferencia adicional del stock
+            try { await restarStock(insumo, diferencia); }
+            catch(e) { console.warn('Stock no ajustado (restar):', e.message); }
+          } else if (diferencia < 0) {
+            // Se redujo la entrega: devolver la diferencia al stock
+            try { await sumarStock(insumo, Math.abs(diferencia)); }
+            catch(e) { console.warn('Stock no ajustado (sumar):', e.message); }
+          }
+        }
+      }
+    }
+
     await updateDoc(entregaRef, datos);
     return { id: entregaId, ...datos };
   } catch (error) {
@@ -304,6 +329,21 @@ export async function actualizarEntrega(entregaId, datos) {
 export async function eliminarEntrega(entregaId) {
   try {
     const entregaRef = doc(db, REGISTROS_COLECCION, entregaId);
+
+    // Leer el registro antes de eliminar para devolver stock
+    const snap = await getDoc(entregaRef);
+    if (snap.exists()) {
+      const data   = snap.data();
+      const insumo = data.insumo || '';
+      const esAgua = data.tipo_registro === 'AGUA' || insumo.toUpperCase() === 'AGUA';
+      const cantidadEntregada = data.cantidad_total ?? 0;
+      if (!esAgua && cantidadEntregada > 0) {
+        // Devolver al stock la cantidad que se había descontado
+        try { await sumarStock(insumo, cantidadEntregada); }
+        catch(e) { console.warn('Stock no restaurado:', e.message); }
+      }
+    }
+
     await deleteDoc(entregaRef);
     return true;
   } catch (error) {
