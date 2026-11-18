@@ -2,7 +2,7 @@
 // Panel de Control y Configuración
 // Según la especificación Spec_Driven_Development.md
 
-import { filtrarEntregas, regularizarEntrega, actualizarEntrega, eliminarEntrega } from "../services/entregas.service.js";
+import { filtrarEntregas, obtenerTodasLasEntregas, regularizarEntrega, actualizarEntrega, eliminarEntrega } from "../services/entregas.service.js";
 import {
   getCatalogosCompletos,
   agregarPabellon, actualizarPabellon, eliminarPabellon,
@@ -31,6 +31,7 @@ export function adminView() {
           <button data-tab="usuarios"       class="tab-btn px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all whitespace-nowrap">👥 Usuarios</button>
           <button data-tab="catalogos"      class="tab-btn px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all whitespace-nowrap">📦 Catálogos &amp; Stock</button>
           <button data-tab="export"         class="tab-btn px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all whitespace-nowrap">📤 Exportar</button>
+          <button data-tab="dashboard"      class="tab-btn px-5 py-3 text-sm font-semibold rounded-t-lg border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all whitespace-nowrap">📊 Dashboard</button>
         </nav>
       </div>
 
@@ -339,6 +340,95 @@ export function adminView() {
         </div>
       </div>
     </div>
+
+      <!-- ===== TAB DASHBOARD ===== -->
+      <div class="tab-panel p-6 hidden" id="tab-dashboard">
+
+        <!-- Selector de período -->
+        <div class="flex flex-wrap items-center gap-3 mb-6">
+          <div class="flex items-center gap-2">
+            <label class="text-xs font-semibold text-slate-500 uppercase">Mes</label>
+            <select id="dash-mes" class="form-input text-sm" style="width:140px;"></select>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs font-semibold text-slate-500 uppercase">Año</label>
+            <select id="dash-anio" class="form-input text-sm" style="width:100px;"></select>
+          </div>
+          <button id="btn-dash-cargar" class="btn btn-primary text-sm">🔄 Actualizar</button>
+          <span id="dash-loading" class="text-xs text-slate-400 hidden">Cargando datos...</span>
+        </div>
+
+        <!-- KPIs -->
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col gap-1">
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Entregas hoy</p>
+            <p id="kpi-entregas-hoy" class="text-3xl font-extrabold text-teal-700">—</p>
+            <p class="text-xs text-slate-400">registros del día</p>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col gap-1">
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Unidades hoy</p>
+            <p id="kpi-unidades-hoy" class="text-3xl font-extrabold text-emerald-700">—</p>
+            <p class="text-xs text-slate-400">unidades entregadas</p>
+          </div>
+          <div class="bg-white rounded-2xl border border-amber-200 shadow-sm p-4 flex flex-col gap-1" style="border-color:#fbbf24;">
+            <p class="text-xs font-semibold text-amber-500 uppercase tracking-wider">Por regularizar</p>
+            <p id="kpi-por-regularizar" class="text-3xl font-extrabold text-amber-600">—</p>
+            <p class="text-xs text-slate-400">registros pendientes</p>
+          </div>
+          <div class="bg-white rounded-2xl border border-blue-200 shadow-sm p-4 flex flex-col gap-1">
+            <p class="text-xs font-semibold text-blue-400 uppercase tracking-wider">Bidones hoy</p>
+            <p id="kpi-bidones-hoy" class="text-3xl font-extrabold text-blue-700">—</p>
+            <p class="text-xs text-slate-400">💧 agua entregada</p>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col gap-1">
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Insumo top</p>
+            <p id="kpi-insumo-top" class="text-lg font-extrabold text-slate-800 leading-tight">—</p>
+            <p class="text-xs text-slate-400">más entregado del mes</p>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col gap-1">
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Pabellón top</p>
+            <p id="kpi-pabellon-top" class="text-lg font-extrabold text-slate-800 leading-tight">—</p>
+            <p class="text-xs text-slate-400">más entregas del mes</p>
+          </div>
+        </div>
+
+        <!-- Gráficos fila 1: Línea 30 días + Dona insumos -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h4 class="font-bold text-slate-700 text-sm mb-4">📈 Entregas por día — últimos 30 días</h4>
+            <div style="position:relative;height:220px;"><canvas id="chart-linea-dias"></canvas></div>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h4 class="font-bold text-slate-700 text-sm mb-4">🍩 Distribución por Insumo (mes)</h4>
+            <div style="position:relative;height:220px;"><canvas id="chart-dona-insumos"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Gráfico fila 2: Barras por pabellón -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-6">
+          <h4 class="font-bold text-slate-700 text-sm mb-4">🏢 Entregas por Pabellón (mes)</h4>
+          <div style="position:relative;height:200px;"><canvas id="chart-barras-pabellon"></canvas></div>
+        </div>
+
+        <!-- Gráficos fila 3: Stock actual + Operadores -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h4 class="font-bold text-slate-700 text-sm mb-4">📦 Stock actual por Insumo</h4>
+            <div style="position:relative;height:220px;"><canvas id="chart-stock"></canvas></div>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h4 class="font-bold text-slate-700 text-sm mb-4">👷 Entregas por Operador (mes)</h4>
+            <div style="position:relative;height:220px;"><canvas id="chart-operadores"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Gráfico fila 4: Agua por área -->
+        <div class="bg-white rounded-2xl border border-blue-100 shadow-sm p-5 mb-2" style="border-color:#bae6fd;">
+          <h4 class="font-bold text-blue-700 text-sm mb-4">💧 Bidones de Agua por Área Solicitante (mes)</h4>
+          <div style="position:relative;height:200px;"><canvas id="chart-agua-areas"></canvas></div>
+        </div>
+
+      </div>
 
     <!-- Modal Editar Pabellón -->
     <div id="modal-edit-pabellon" class="fixed inset-0 z-50 hidden items-center justify-center" style="background:rgba(15,23,42,0.55);">
@@ -1331,4 +1421,221 @@ async function initAdminView(container) {
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Reporte Agua</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px}h2{color:#0284c7}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px 8px;text-align:center}th{background:#0284c7;color:#fff}tr:nth-child(even){background:#f0f9ff}</style></head><body><h2>💧 Reporte de Entregas de Agua — PAB-IN</h2><p>Generado el ${new Date().toLocaleString('es-PE')}</p><table><thead><tr><th>FECHA</th><th>INSUMO</th><th>BIDONES</th><th>ÁREA SOLICITANTE</th><th>PABELLÓN</th><th>PISO</th><th>UBICACIÓN EXACTA</th><th>ENCARGADO</th></tr></thead><tbody>${filas}</tbody></table></body></html>`;
     const w = window.open('', '_blank', 'width=1100,height=700'); w.document.write(html); w.document.close(); setTimeout(() => { w.focus(); w.print(); }, 500);
   });
+
+  // =====================================================================
+  // ===== TAB DASHBOARD =================================================
+  // =====================================================================
+  (function initDashboard() {
+    // --- helpers de fecha ---
+    const hoyStr = () => new Date().toISOString().split('T')[0];
+    const hoy    = new Date();
+
+    // Poblar selectores mes/año
+    const selMes  = container.querySelector('#dash-mes');
+    const selAnio = container.querySelector('#dash-anio');
+    const meses   = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    meses.forEach((m, i) => {
+      const o = document.createElement('option');
+      o.value = i + 1; o.textContent = m;
+      if (i === hoy.getMonth()) o.selected = true;
+      selMes.appendChild(o);
+    });
+    for (let y = hoy.getFullYear(); y >= hoy.getFullYear() - 3; y--) {
+      const o = document.createElement('option'); o.value = y; o.textContent = y;
+      if (y === hoy.getFullYear()) o.selected = true;
+      selAnio.appendChild(o);
+    }
+
+    // Referencias a instancias de Chart.js (para destruir y recrear)
+    let chartLinea, chartDona, chartPabellon, chartStock, chartOps, chartAgua;
+
+    function destroyCharts() {
+      [chartLinea, chartDona, chartPabellon, chartStock, chartOps, chartAgua].forEach(c => { if (c) c.destroy(); });
+    }
+
+    // Cargar Chart.js dinámicamente (solo una vez)
+    function loadChartJs() {
+      return new Promise((resolve) => {
+        if (window.Chart) return resolve();
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js';
+        s.onload = resolve;
+        document.head.appendChild(s);
+      });
+    }
+
+    // Paleta de colores
+    const PALETTE = ['#0d9488','#3b82f6','#f59e0b','#8b5cf6','#ec4899','#10b981','#ef4444','#06b6d4','#84cc16','#f97316'];
+
+    async function cargarDashboard() {
+      const mes  = parseInt(selMes.value);
+      const anio = parseInt(selAnio.value);
+      const loading = container.querySelector('#dash-loading');
+      loading.classList.remove('hidden');
+
+      await loadChartJs();
+
+      try {
+        // Traer todos los registros usando funciones ya importadas en el módulo
+        const todasEntregas = await obtenerTodasLasEntregas();
+        const stockData     = await getStock();
+
+        const hoyStr2 = hoyStr();
+
+        // Separar agua de normales
+        const esAgua = e => (e.tipo_registro === 'AGUA' || (e.insumo||'').toUpperCase() === 'AGUA');
+
+        // ---- KPI 1 & 2: Entregas y unidades de hoy ----
+        const entregasHoy = todasEntregas.filter(e => e.fecha_registro === hoyStr2 && !esAgua(e));
+        container.querySelector('#kpi-entregas-hoy').textContent  = entregasHoy.length;
+        container.querySelector('#kpi-unidades-hoy').textContent  = entregasHoy.reduce((s,e) => s + (e.cantidad_total||0), 0);
+
+        // ---- KPI 3: Por regularizar (global, sin agua) ----
+        container.querySelector('#kpi-por-regularizar').textContent =
+          todasEntregas.filter(e => !esAgua(e) && e.estado === 'POR_REGULARIZAR').length;
+
+        // ---- KPI 4: Bidones de agua hoy ----
+        const aguaHoy = todasEntregas.filter(e => esAgua(e) && e.fecha_registro === hoyStr2);
+        container.querySelector('#kpi-bidones-hoy').textContent = aguaHoy.reduce((s,e) => s + (e.cantidad_bidones ?? e.cantidad_total ?? 0), 0);
+
+        // Filtrar por mes/año seleccionado (solo registros normales para KPIs 5 y 6)
+        const mesStr  = String(mes).padStart(2,'0');
+        const prefijo = `${anio}-${mesStr}`;
+        const delMes  = todasEntregas.filter(e => !esAgua(e) && (e.fecha_registro||'').startsWith(prefijo));
+
+        // ---- KPI 5: Insumo top del mes ----
+        const porInsumo = {};
+        delMes.forEach(e => { porInsumo[e.insumo||'?'] = (porInsumo[e.insumo||'?'] || 0) + (e.cantidad_total||0); });
+        const insumoTop = Object.entries(porInsumo).sort((a,b)=>b[1]-a[1])[0];
+        container.querySelector('#kpi-insumo-top').textContent = insumoTop ? (insumoTop[0].replace(/_/g,' ')) : '—';
+
+        // ---- KPI 6: Pabellón top del mes ----
+        const porPabellon = {};
+        delMes.forEach(e => { porPabellon[e.pabellon||'?'] = (porPabellon[e.pabellon||'?'] || 0) + 1; });
+        const pabTop = Object.entries(porPabellon).sort((a,b)=>b[1]-a[1])[0];
+        container.querySelector('#kpi-pabellon-top').textContent = pabTop ? pabTop[0] : '—';
+
+        destroyCharts();
+
+        // ---- GRÁFICO 1: Línea últimos 30 días ----
+        const dias30 = [];
+        const contsDias = {};
+        for (let d = 29; d >= 0; d--) {
+          const f = new Date(); f.setDate(f.getDate() - d);
+          const fStr = f.toISOString().split('T')[0];
+          dias30.push(fStr.slice(5)); // MM-DD
+          contsDias[fStr] = 0;
+        }
+        todasEntregas.filter(e => !esAgua(e)).forEach(e => {
+          if (contsDias[e.fecha_registro] !== undefined) contsDias[e.fecha_registro]++;
+        });
+        chartLinea = new window.Chart(container.querySelector('#chart-linea-dias'), {
+          type: 'line',
+          data: {
+            labels: dias30,
+            datasets: [{
+              label: 'Entregas',
+              data: Object.values(contsDias),
+              borderColor: '#0d9488', backgroundColor: 'rgba(13,148,136,0.1)',
+              tension: 0.4, fill: true, pointRadius: 3, pointBackgroundColor: '#0d9488'
+            }]
+          },
+          options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ y:{ beginAtZero:true, ticks:{stepSize:1} } } }
+        });
+
+        // ---- GRÁFICO 2: Dona por insumo (mes) ----
+        const insumosLabels = Object.keys(porInsumo);
+        const insumosData   = insumosLabels.map(k => porInsumo[k]);
+        chartDona = new window.Chart(container.querySelector('#chart-dona-insumos'), {
+          type: 'doughnut',
+          data: {
+            labels: insumosLabels.map(l => l.replace(/_/g,' ')),
+            datasets: [{ data: insumosData, backgroundColor: PALETTE.slice(0, insumosLabels.length), borderWidth: 2 }]
+          },
+          options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right', labels:{ font:{size:11} } } } }
+        });
+
+        // ---- GRÁFICO 3: Barras por pabellón (mes) ----
+        const pabLabels = Object.keys(porPabellon).sort((a,b) => porPabellon[b]-porPabellon[a]);
+        const pabData   = pabLabels.map(k => porPabellon[k]);
+        chartPabellon = new window.Chart(container.querySelector('#chart-barras-pabellon'), {
+          type: 'bar',
+          data: {
+            labels: pabLabels,
+            datasets: [{ label: 'Entregas', data: pabData, backgroundColor: PALETTE[0], borderRadius: 6 }]
+          },
+          options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ x:{ beginAtZero:true, ticks:{stepSize:1} } } }
+        });
+
+        // ---- GRÁFICO 4: Stock actual ----
+        const stockEntries = Object.entries(stockData || {}).filter(([k]) => k.toUpperCase() !== 'AGUA');
+        chartStock = new window.Chart(container.querySelector('#chart-stock'), {
+          type: 'bar',
+          data: {
+            labels: stockEntries.map(([k]) => k.replace(/_/g,' ')),
+            datasets: [{
+              label: 'Stock',
+              data: stockEntries.map(([,v]) => v),
+              backgroundColor: stockEntries.map(([,v]) => v > 50 ? '#10b981' : v > 20 ? '#f59e0b' : '#ef4444'),
+              borderRadius: 6
+            }]
+          },
+          options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ y:{ beginAtZero:true } } }
+        });
+
+        // ---- GRÁFICO 5: Entregas por operador (mes) ----
+        const porOp = {};
+        delMes.forEach(e => {
+          const nombre = e.encargado?.nombre || e.encargado || 'Desconocido';
+          porOp[nombre] = (porOp[nombre]||0) + 1;
+        });
+        const opLabels = Object.keys(porOp).sort((a,b)=>porOp[b]-porOp[a]);
+        chartOps = new window.Chart(container.querySelector('#chart-operadores'), {
+          type: 'bar',
+          data: {
+            labels: opLabels,
+            datasets: [{ label: 'Entregas', data: opLabels.map(k=>porOp[k]), backgroundColor: PALETTE[1], borderRadius: 6 }]
+          },
+          options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ x:{ beginAtZero:true, ticks:{stepSize:1} } } }
+        });
+
+        // ---- GRÁFICO 6: Agua por área solicitante (mes) ----
+        const aguaMes = todasEntregas.filter(e => esAgua(e) && (e.fecha_registro||'').startsWith(prefijo));
+        const porArea = {};
+        aguaMes.forEach(e => {
+          const area = e.area_solicitante || 'Sin área';
+          porArea[area] = (porArea[area]||0) + (e.cantidad_bidones ?? e.cantidad_total ?? 0);
+        });
+        const areaLabels = Object.keys(porArea).sort((a,b)=>porArea[b]-porArea[a]);
+        chartAgua = new window.Chart(container.querySelector('#chart-agua-areas'), {
+          type: 'bar',
+          data: {
+            labels: areaLabels,
+            datasets: [{ label: 'Bidones', data: areaLabels.map(k=>porArea[k]), backgroundColor: '#3b82f6', borderRadius: 6 }]
+          },
+          options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ y:{ beginAtZero:true, ticks:{stepSize:1} } } }
+        });
+
+      } catch(err) {
+        console.error('Error al cargar dashboard:', err);
+      } finally {
+        loading.classList.add('hidden');
+      }
+    }
+
+    container.querySelector('#btn-dash-cargar').addEventListener('click', cargarDashboard);
+
+    // Cargar automáticamente cuando se activa el tab Dashboard
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach(m => {
+        if (m.target.id === 'tab-dashboard' && !m.target.classList.contains('hidden')) {
+          cargarDashboard();
+          observer.disconnect();
+        }
+      });
+    });
+    const tabDash = container.querySelector('#tab-dashboard');
+    if (tabDash) observer.observe(tabDash, { attributes: true, attributeFilter: ['class'] });
+  })();
+
 }
