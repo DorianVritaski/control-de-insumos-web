@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Inicializar Admin — Control de Insumos</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 60px auto;
+      padding: 20px;
+      background: #f8fafc;
+    }
+
+    h2 {
+      color: #0d9488;
+    }
+
+    pre {
+      background: #1e293b;
+      color: #94a3b8;
+      padding: 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      overflow-x: auto;
+    }
+
+    .btn {
+      background: #0d9488;
+      color: white;
+      border: none;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+
+    .btn:hover {
+      background: #0f766e;
+    }
+
+    .btn:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+
+    #log {
+      margin-top: 20px;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .ok {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .err {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>🚀 Inicializar Admin en Firestore</h2>
+  <p>Este script crea el documento del administrador en la colección <code>users</code> del nuevo proyecto Firebase.</p>
+
+  <pre id="payload">Preparando datos...</pre>
+
+  <button class="btn" id="btn-init" onclick="initAdmin()">▶ Crear documento de Admin</button>
+  <div id="log"></div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAoyHJTW6h3SjXmJY-ARC7e2Tq1RTPuCRA",
+      authDomain: "control-de-insumos-web-6489f.firebaseapp.com",
+      projectId: "control-de-insumos-web-6489f",
+      storageBucket: "control-de-insumos-web-6489f.firebasestorage.app",
+      messagingSenderId: "392046046071",
+      appId: "1:392046046071:web:881df337095632882bcf72"
+    };
+
+    const ADMIN_UID = "rMrFOTHYNnXiZo0HdyJJpdcOABE3";
+    const ADMIN_EMAIL = "jhanntdlc@gmail.com";
+    const ADMIN_DNI = "72947488";   // ← Cambia si quieres un DNI real
+    const ADMIN_NOMBRE = "Administrador";  // ← Cambia al nombre real
+
+    const adminDoc = {
+      uid: ADMIN_UID,
+      correo: ADMIN_EMAIL,
+      dni: ADMIN_DNI,
+      nombre_completo: ADMIN_NOMBRE,
+      rol: "ADMIN",
+      activo: true,
+    };
+
+    document.getElementById('payload').textContent = JSON.stringify(adminDoc, null, 2);
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    window.initAdmin = async function () {
+      const btn = document.getElementById('btn-init');
+      const log = document.getElementById('log');
+      btn.disabled = true;
+      btn.textContent = 'Creando...';
+      log.className = '';
+      log.textContent = '';
+
+      // Pedir contraseña del admin para autenticarse (Firestore en modo producción lo requiere)
+      const pwd = prompt('Ingresa tu contraseña de jhanntdlc@gmail.com para autenticarte:');
+      if (!pwd) { btn.disabled = false; btn.textContent = '▶ Crear documento de Admin'; return; }
+
+      try {
+        await signInWithEmailAndPassword(auth, ADMIN_EMAIL, pwd);
+        const docRef = doc(db, 'users', ADMIN_UID);
+        await setDoc(docRef, { ...adminDoc, created_at: serverTimestamp() });
+
+        log.className = 'log ok';
+        log.innerHTML = `✅ <strong>¡Documento creado!</strong><br>
+          Colección: <code>users</code><br>
+          ID documento: <code>${ADMIN_UID}</code><br>
+          Rol: <code>ADMIN</code><br><br>
+          Ya puedes iniciar sesión en la web con <strong>${ADMIN_EMAIL}</strong>.`;
+        btn.textContent = '✓ Listo';
+      } catch (err) {
+        log.className = 'log err';
+        log.innerHTML = `❌ <strong>Error:</strong> ${err.message}`;
+        btn.disabled = false;
+        btn.textContent = '▶ Reintentar';
+      }
+    };
+  </script>
+</body>
+
+</html>

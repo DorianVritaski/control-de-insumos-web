@@ -6,12 +6,12 @@ import { getAuth } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyARQrX_95ep1n6QbktF0FjhV51qtLdSxes",
-  authDomain: "control-de-insumos-web.firebaseapp.com",
-  projectId: "control-de-insumos-web",
-  storageBucket: "control-de-insumos-web.firebasestorage.app",
-  messagingSenderId: "333088496966",
-  appId: "1:333088496966:web:9d44ce0f2619f3132c1947"
+  apiKey: "AIzaSyAoyHJTW6h3SjXmJY-ARC7e2Tq1RTPuCRA",
+  authDomain: "control-de-insumos-web-6489f.firebaseapp.com",
+  projectId: "control-de-insumos-web-6489f",
+  storageBucket: "control-de-insumos-web-6489f.firebasestorage.app",
+  messagingSenderId: "392046046071",
+  appId: "1:392046046071:web:881df337095632882bcf72"
 };
 
 const app = initializeApp(firebaseConfig);
